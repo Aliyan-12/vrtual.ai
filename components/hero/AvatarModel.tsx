@@ -55,8 +55,14 @@ export default function AvatarModel({
   }, [obj, diffuse, normal, roughness, metalness]);
 
   useEffect(() => {
+    if (!group.current) return;
+
     const tl = gsap.timeline({ repeat: -1, yoyo: true });
     tl.to(group.current.scale, { x: 1.04, y: 1.04, z: 1.04, duration: 2.2, ease: "sine.inOut" });
+    
+    return () => {
+      tl.kill();
+    };
   }, []);
 
   useEffect(() => {

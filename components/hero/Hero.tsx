@@ -43,10 +43,14 @@ function ParticleField({ cursorRef }: { cursorRef: React.MutableRefObject<{ x: n
           {positions && (
             <bufferAttribute
               attach="attributes-position"
-              count={positions.length / 3}
-              array={positions}
-              itemSize={3}
+              args={[positions, 3]}
             />
+            // <bufferAttribute
+            //   attach="attributes-position"
+            //   count={positions.length / 3}
+            //   array={positions}
+            //   itemSize={3}
+            // />
           )}
         </bufferGeometry>
         <pointsMaterial size={0.02} color="#9ca3af" opacity={0.4} transparent />
@@ -78,15 +82,15 @@ export default function Hero() {
     const Ctx = (window as any).AudioContext || (window as any).webkitAudioContext;
     if (!Ctx) return;
     audioCtx.current = new Ctx();
-    const osc = audioCtx.current.createOscillator();
-    gain.current = audioCtx.current.createGain();
-    osc.type = "sine";
-    osc.frequency.value = 140;
-    gain.current.gain.value = 0.0008;
-    osc.connect(gain.current);
-    gain.current.connect(audioCtx.current.destination);
-    osc.start();
-    gsap.to(gain.current.gain, { value: 0.0016, duration: 2.4, repeat: -1, yoyo: true, ease: "sine.inOut" });
+    // const osc = audioCtx.current.createOscillator();
+    // gain.current = audioCtx.current.createGain();
+    // osc.type = "sine";
+    // osc.frequency.value = 140;
+    // gain.current.gain.value = 0.0008;
+    // osc.connect(gain.current);
+    // gain.current.connect(audioCtx.current.destination);
+    // osc.start();s
+    // gsap.to(gain.current.gain, { value: 0.0016, duration: 2.4, repeat: -1, yoyo: true, ease: "sine.inOut" });
   }
 
   function onMove(e: React.MouseEvent<HTMLDivElement>) {

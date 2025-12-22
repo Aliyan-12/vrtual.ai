@@ -121,12 +121,12 @@ export default function Hero() {
   function onFocusInput() {
     ensureAudio();
     if (!inputRef.current) return;
-    gsap.to(inputRef.current, { width: "36rem", duration: 0.3, ease: "sine.out" });
+    gsap.to(inputRef.current, { maxWidth: "36rem", duration: 0.3, ease: "sine.out" });
   }
 
   function onBlurInput() {
     if (!inputRef.current) return;
-    gsap.to(inputRef.current, { width: "28rem", duration: 0.3, ease: "sine.out" });
+    gsap.to(inputRef.current, { maxWidth: "28rem", duration: 0.3, ease: "sine.out" });
   }
 
   useEffect(() => {
@@ -146,7 +146,7 @@ export default function Hero() {
   }, [mood]);
 
   return (
-    <section className="relative h-screen overflow-hidden bg-black text-zinc-50 cursor-none">
+    <section className="relative min-h-[80vh] sm:h-screen overflow-hidden bg-black text-zinc-50 sm:cursor-none">
       <div ref={bgAurora} className="absolute inset-0">
         <div className="absolute inset-0 bg-gradient-to-br from-black via-zinc-900 to-black" />
         <div ref={cyanRef} className="absolute -top-40 left-1/3 h-[60vh] w-[60vw] rounded-full bg-cyan-500/20 blur-3xl opacity-20" />
@@ -169,13 +169,13 @@ export default function Hero() {
         onMouseMove={onMove}
         onMouseEnter={ensureAudio}
       >
-        <div className="select-none text-sm tracking-[0.2em] text-zinc-400">AI Emotional Support</div>
-        <h1 className="mt-4 text-5xl font-semibold tracking-wide">You don’t have to carry it alone.</h1>
-        <p className="mt-4 max-w-2xl text-lg text-zinc-300">
+        <div className="select-none text-xs sm:text-sm tracking-[0.2em] text-zinc-400">AI Emotional Support</div>
+        <h1 className="mt-4 text-3xl sm:text-5xl font-semibold tracking-wide">You don’t have to carry it alone.</h1>
+        <p className="mt-4 max-w-2xl px-4 sm:px-0 text-base sm:text-lg text-zinc-300">
           An emotionally intelligent AI that listens, understands, and supports you — privately and without judgment.
         </p>
 
-        <div className="mt-8 flex items-center gap-4">
+        <div className="mt-8 flex items-center gap-3 sm:gap-4 px-4 sm:px-0">
           <button
             ref={micRef}
             onMouseEnter={onMicHover}
@@ -192,7 +192,7 @@ export default function Hero() {
             onFocus={onFocusInput}
             onBlur={onBlurInput}
             placeholder="Tell me what’s on your mind…"
-            className="w-[28rem] rounded-2xl bg-white/8 px-6 py-3 text-zinc-100 backdrop-blur ring-1 ring-white/25 outline-none transition-all placeholder:text-zinc-400"
+            className="w-full max-w-[28rem] sm:max-w-[32rem] md:max-w-[36rem] rounded-2xl bg-white/8 px-4 sm:px-6 py-3 text-zinc-100 backdrop-blur ring-1 ring-white/25 outline-none transition-all placeholder:text-zinc-400"
           />
         </div>
 
@@ -222,7 +222,7 @@ export default function Hero() {
         </Link>
       </div>
 
-      <div ref={cursorDot} className="pointer-events-none absolute z-50 h-4 w-4 -translate-x-2 -translate-y-2 rounded-full bg-white/80 shadow-[0_0_40px_8px_rgba(255,255,255,0.2)]" />
+      <div ref={cursorDot} className="pointer-events-none absolute z-50 hidden sm:block h-4 w-4 -translate-x-2 -translate-y-2 rounded-full bg-white/80 shadow-[0_0_40px_8px_rgba(255,255,255,0.2)]" />
     </section>
   );
 }

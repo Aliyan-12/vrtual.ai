@@ -85,15 +85,34 @@ export default function Chat() {
                     }
                   >
                     {message.parts.map((part, i) => {
-                      switch (part.type) {
-                        case 'text':
-                          return <div key={`${message.id}-${i}`}>{part.text}</div>;
-                        case 'source-url':
-                          return (
-                          <div key={`${message.id}-${i}`} className="overflow-hidden rounded-xl ring-1 ring-white/15">
-                            <ReactPlayer oEmbedUrl={part.url} width="100%" height="180px" controls />
+                      console.log("Rendering part:", message);
+                      // switch (part.type) {
+                      //   case 'text':
+                      //     return <div key={`${message.id}-${i}`} dangerouslySetInnerHTML={{ __html: part.text }}/>;
+                      //   case 'tool-output-available':
+                      //     return (
+                      //     <div key={`${message.id}-${i}`} className="overflow-hidden rounded-xl ring-1 ring-white/15">
+                      //       <ReactPlayer oEmbedUrl={part.url} width="100%" height="180px" controls />
+                      //     </div>
+                      //     );
+                      // }
+                      if (part.type === 'text') {
+                        return <div key={`${message.id}-${i}`} dangerouslySetInnerHTML={{ __html: part.text }} />;
+                      }
+
+                      // Render video parts (tool results)
+                      if (part.type === 'tool-fetchVideos') {
+                        return part.output?.map((video: any, j: number) => (
+                          <div key={`${message.id}-${i}-${j}`} className="overflow-hidden rounded-xl ring-1 ring-white/15 my-2">
+                            <ReactPlayer
+                              url={video.url}
+                              width="100%"
+                              height="180px"
+                              controls
+                            />
+                            <div className="mt-1 text-sm text-zinc-200">{video.title}</div>
                           </div>
-                          );
+                        ));
                       }
                     })}
                   </div>

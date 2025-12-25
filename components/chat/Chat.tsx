@@ -1,6 +1,4 @@
 'use client';
-import Container from "@/components/Container";
-import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { useChat } from '@ai-sdk/react';
@@ -46,83 +44,66 @@ export default function Chat() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-black via-zinc-900 to-black text-zinc-50">
-      <Container className="py-16">
-        <div className="mb-8 flex items-end justify-between">
-          <div>
-            <div className="text-sm tracking-[0.2em] text-zinc-400">Conversation</div>
-            <h1 className="mt-1 text-3xl font-semibold">Chat with Your Avatar</h1>
-            <p className="mt-2 text-zinc-300">Voice and text conversation. Dummy responses with media for now.</p>
-          </div>
-          <Link
-            href="/"
-            className="rounded-full bg-white/10 px-4 py-2 text-sm backdrop-blur ring-1 ring-white/25 hover:bg-white/14"
-          >
-            Back to Home
-          </Link>
+      <div className="mx-auto flex min-h-screen w-full max-w-3xl flex-col px-4 sm:px-6 py-6 sm:py-8">
+        <div
+          ref={scrollRef}
+          className="flex-1 overflow-y-auto pb-20"
+        >
+          {messages.map(message => (
+            <div
+              key={message.id}
+              className={
+                message.role === "user"
+                  ? "mb-4 text-right"
+                  : message.role === "assistant"
+                  ? "mb-4"
+                  : "mb-4 text-center text-xs text-zinc-400"
+              }
+            >
+              <div
+                className={
+                  message.role === "user"
+                    ? "inline-block max-w-[72ch] rounded-2xl bg-cyan-500/15 px-4 py-2 text-zinc-50"
+                    : message.role === "assistant"
+                    ? "inline-block max-w-[72ch] rounded-2xl bg-white/5 px-4 py-2 text-zinc-100"
+                    : ""
+                }
+              >
+                {message.parts.map((part, i) => {
+                  if (part.type === 'text') {
+                    return <div key={`${message.id}-${i}`} dangerouslySetInnerHTML={{ __html: part.text }} />;
+                  }
+                  if (part.type === 'tool-fetchVideos') {
+                    return part.output?.map((video: { url: string; title?: string }, j: number) => (
+                      <div key={`${message.id}-${i}-${j}`} className="my-3 overflow-hidden rounded-xl">
+                        <ReactPlayer
+                          url={video.url}
+                          width="100%"
+                          height="200px"
+                          controls
+                        />
+                        <div className="mt-1 text-sm text-zinc-200">{video.title}</div>
+                      </div>
+                    ));
+                  }
+                })}
+              </div>
+            </div>
+          ))}
         </div>
 
-        <div className="grid gap-6 sm:grid-cols-[1fr_340px]">
-          <div className="rounded-2xl bg-white/8 p-4 backdrop-blur ring-1 ring-white/25">
-            <div ref={scrollRef} className="mb-4 h-[48vh] overflow-y-auto rounded-lg bg-white/4 p-4 ring-1 ring-white/15">
-              {messages.map(message => (
-                <div
-                  key={message.id}
-                  className={
-                    message.role === "user"
-                      ? "mb-3 text-right"
-                      : message.role === "assistant"
-                      ? "mb-3"
-                      : "mb-3 text-center text-xs text-zinc-400"
-                  }
-                >
-                  <div
-                    className={
-                      message.role === "user"
-                        ? "inline-block max-w-[72ch] rounded-2xl bg-cyan-400/30 px-4 py-2 text-zinc-50 ring-1 ring-white/20"
-                        : message.role === "assistant"
-                        ? "inline-block max-w-[72ch] rounded-2xl bg-white/8 px-4 py-2 text-zinc-100 backdrop-blur ring-1 ring-white/20"
-                        : ""
-                    }
-                  >
-                    {message.parts.map((part, i) => {
-                      console.log("Rendering part:", message);
-                      // switch (part.type) {
-                      //   case 'text':
-                      //     return <div key={`${message.id}-${i}`} dangerouslySetInnerHTML={{ __html: part.text }}/>;
-                      //   case 'tool-output-available':
-                      //     return (
-                      //     <div key={`${message.id}-${i}`} className="overflow-hidden rounded-xl ring-1 ring-white/15">
-                      //       <ReactPlayer oEmbedUrl={part.url} width="100%" height="180px" controls />
-                      //     </div>
-                      //     );
-                      // }
-                      if (part.type === 'text') {
-                        return <div key={`${message.id}-${i}`} dangerouslySetInnerHTML={{ __html: part.text }} />;
-                      }
-
-                      // Render video parts (tool results)
-                      if (part.type === 'tool-fetchVideos') {
-                        return part.output?.map((video: any, j: number) => (
-                          <div key={`${message.id}-${i}-${j}`} className="overflow-hidden rounded-xl ring-1 ring-white/15 my-2">
-                            <ReactPlayer
-                              url={video.url}
-                              width="100%"
-                              height="180px"
-                              controls
-                            />
-                            <div className="mt-1 text-sm text-zinc-200">{video.title}</div>
-                          </div>
-                        ));
-                      }
-                    })}
-                  </div>
-                </div>
-              ))}
-            </div>
-            <div className="flex items-center gap-2">
+        <div className="sticky bottom-0">
+          <div className="bg-gradient-to-t from-black/70 to-transparent pb-4 pt-2">
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                send();
+              }}
+              className="flex items-center gap-2"
+            >
               <button
                 type="button"
-                className="h-10 w-10 rounded-full bg-white/10 text-xl backdrop-blur ring-1 ring-white/25"
+                className="h-10 w-10 rounded-full bg-white/10 text-xl backdrop-blur"
                 title="Toggle microphone"
               >
                 🎙️
@@ -131,31 +112,18 @@ export default function Chat() {
                 value={text}
                 onChange={(e) => setText(e.target.value)}
                 placeholder="Type a message"
-                className="flex-1 rounded-full bg-white/8 px-4 py-2 text-sm text-zinc-100 outline-none backdrop-blur ring-1 ring-white/25 placeholder:text-zinc-400"
+                className="flex-1 rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-zinc-100 outline-none placeholder:text-zinc-400"
               />
               <button
-                type="button"
-                onClick={send}
-                className="rounded-full bg-cyan-500/80 px-4 py-2 text-sm text-black ring-1 ring-white/20 hover:bg-cyan-400"
+                type="submit"
+                className="rounded-xl bg-cyan-500/80 px-4 py-2 text-sm text-black hover:bg-cyan-400"
               >
                 Send
               </button>
-            </div>
-          </div>
-
-          <div className="rounded-2xl bg-white/8 p-4 backdrop-blur ring-1 ring-white/25">
-            <div className="text-sm font-medium">Session</div>
-            <div className="mt-2 text-sm text-zinc-300">
-              Use voice or text to share what you’re feeling. The avatar will respond with guidance and links.
-            </div>
-            <div className="mt-4 flex flex-wrap gap-2">
-              <span className="rounded-full bg-white/10 px-3 py-1 text-xs">Podcast</span>
-              <span className="rounded-full bg-white/10 px-3 py-1 text-xs">Blogs</span>
-              <span className="rounded-full bg-white/10 px-3 py-1 text-xs">Episodes</span>
-            </div>
+            </form>
           </div>
         </div>
-      </Container>
+      </div>
     </div>
   );
 }

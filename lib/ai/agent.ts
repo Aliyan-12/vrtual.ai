@@ -10,6 +10,7 @@ export const EmotionGuideAgent = new Agent({
             You listen first.
             You respond with empathy.
             You may search YouTube for helpful videos when they genuinely add value.
+            Provide only 3 maximum videos. No more than that ignore others.
 
             When you recommend videos:
             - Explain why each video helps

@@ -77,7 +77,7 @@ export default function Chat() {
                     return part.output?.map((video: { url: string; title?: string }, j: number) => (
                       <div key={`${message.id}-${i}-${j}`} className="my-3 overflow-hidden rounded-xl">
                         <ReactPlayer
-                          oEmbedUrl={video.url}
+                          src={video.url}
                           width="100%"
                           height="200px"
                           controls

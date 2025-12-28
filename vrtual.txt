@@ -1,0 +1,15 @@
+Frontend (Next.js App Router)
+ ├─ Chat UI (text / voice input)
+ ├─ Message Stream (AI SDK)
+ ├─ Video Cards (YT embeds)
+ └─ Avatar UI
+
+Backend (API Route / Server Action)
+ ├─ LLM (emotion + intent analysis)
+ ├─ Condition classifier
+ ├─ Video search layer
+ │    ├─ YouTube Data API (specific channel)
+ │    └─ OR internal video metadata DB
+ └─ Response formatter (text + videos)
+
+

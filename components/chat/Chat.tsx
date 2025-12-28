@@ -43,7 +43,7 @@ export default function Chat() {
   }, [messages]);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-black via-zinc-900 to-black text-zinc-50">
+    <div className="min-h-screen bg-gradient-to-br from-[var(--primary-light)] via-[var(--white)] to-[var(--white)] text-[var(--text-dark)]">
       <div className="mx-auto flex min-h-screen w-full max-w-3xl flex-col px-4 sm:px-6 py-6 sm:py-8">
         <div
           ref={scrollRef}
@@ -55,17 +55,17 @@ export default function Chat() {
               className={
                 message.role === "user"
                   ? "mb-4 text-right"
-                  : message.role === "assistant"
+                : message.role === "assistant"
                   ? "mb-4"
-                  : "mb-4 text-center text-xs text-zinc-400"
+                  : "mb-4 text-center text-xs text-[var(--text-muted)]"
               }
             >
               <div
                 className={
                   message.role === "user"
-                    ? "inline-block max-w-[72ch] rounded-2xl bg-cyan-500/15 px-4 py-2 text-zinc-50"
-                    : message.role === "assistant"
-                    ? "inline-block max-w-[72ch] rounded-2xl bg-white/5 px-4 py-2 text-zinc-100"
+                    ? "inline-block max-w-[72ch] rounded-2xl bg-[var(--primary-light)] px-4 py-2 text-[var(--text-dark)] ring-1 ring-[var(--primary)]"
+                  : message.role === "assistant"
+                    ? "inline-block max-w-[72ch] rounded-2xl bg-[var(--white)] px-4 py-2 text-[var(--text-dark)] ring-1 ring-black/10"
                     : ""
                 }
               >
@@ -76,13 +76,8 @@ export default function Chat() {
                   if (part.type === 'tool-fetchVideos' && Array.isArray(part.output)) {
                     return part.output?.map((video: { url: string; title?: string }, j: number) => (
                       <div key={`${message.id}-${i}-${j}`} className="my-3 overflow-hidden rounded-xl">
-                        <ReactPlayer
-                          src={video.url}
-                          width="100%"
-                          height="200px"
-                          controls
-                        />
-                        <div className="mt-1 text-sm text-zinc-200">{video.title}</div>
+                        <ReactPlayer url={video.url} width="100%" height="200px" controls />
+                        <div className="mt-1 text-sm text-[var(--text-muted)]">{video.title}</div>
                       </div>
                     ));
                   }
@@ -93,30 +88,37 @@ export default function Chat() {
         </div>
 
         <div className="sticky bottom-0">
-          <div className="bg-gradient-to-t from-black/70 to-transparent pb-4 pt-2">
+          <div className=" pb-4 pt-2">
             <form
               onSubmit={(e) => {
                 e.preventDefault();
                 send();
               }}
-              className="flex items-center gap-2"
+              className="flex items-end gap-3"
             >
               <button
                 type="button"
-                className="h-10 w-10 rounded-full bg-white/10 text-xl backdrop-blur"
+                className="h-10 w-10 rounded-full bg-[var(--primary-light)] text-xl ring-1 ring-[var(--primary)]"
                 title="Toggle microphone"
               >
                 🎙️
               </button>
-              <input
+              <textarea
                 value={text}
                 onChange={(e) => setText(e.target.value)}
-                placeholder="Type a message"
-                className="flex-1 rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-zinc-100 outline-none placeholder:text-zinc-400"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    send();
+                  }
+                }}
+                placeholder="how are you feeling?"
+                rows={1}
+                className="flex-1 min-h-12 max-h-36 resize-none rounded-2xl border border-black/10 bg-[var(--white)] px-4 py-3 text-sm text-[var(--text-dark)] outline-none placeholder:text-[var(--text-muted)] shadow-sm focus:ring-2 focus:ring-[var(--primary)]"
               />
               <button
                 type="submit"
-                className="rounded-xl bg-cyan-500/80 px-4 py-2 text-sm text-black hover:bg-cyan-400"
+                className="rounded-xl bg-[var(--primary)] px-4 py-2 text-sm text-white hover:bg-[var(--primary-hover)]"
               >
                 Send
               </button>

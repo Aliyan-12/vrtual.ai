@@ -1,21 +1,47 @@
 @import "tailwindcss";
 
 :root {
-  --background: #000000;
-  --foreground: #ededed;
+  --primary: #4DA8FF;
+  --primary-hover: #3B94F6;
+  --primary-light: #EAF4FF;
+  --secondary: #4ADE80;
+  --secondary-light: #ECFDF3;
+  --accent: #FFD966;
+  --accent-light: #FFF6D1;
+  --pink: #FBCFE8;
+  --pink-light: #FFF1F8;
+  --text-dark: #0F172A;
+  --text-muted: #64748B;
+  --white: #FFFFFF;
+  --light-gray: #F8FAFC;
+  --background: var(--white);
+  --foreground: var(--text-dark);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-light: var(--primary-light);
+  --color-secondary: var(--secondary);
+  --color-secondary-light: var(--secondary-light);
+  --color-accent: var(--accent);
+  --color-accent-light: var(--accent-light);
+  --color-pink: var(--pink);
+  --color-pink-light: var(--pink-light);
+  --color-text-dark: var(--text-dark);
+  --color-text-muted: var(--text-muted);
+  --color-white: var(--white);
+  --color-light-gray: var(--light-gray);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #000000;
-    --foreground: #ededed;
+    --background: var(--light-gray);
+    --foreground: var(--text-dark);
   }
 }
 

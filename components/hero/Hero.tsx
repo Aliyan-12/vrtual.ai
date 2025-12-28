@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import gsap from "gsap";
@@ -15,8 +15,7 @@ const moodColors: Record<string, string> = {
 
 function ParticleField({ cursorRef }: { cursorRef: React.MutableRefObject<{ x: number; y: number }> }) {
   const group = useRef<THREE.Group | null>(null);
-  const [positions, setPositions] = useState<Float32Array | null>(null);
-  useEffect(() => {
+  const positions = useMemo(() => {
     const count = 600;
     const arr = new Float32Array(count * 3);
     for (let i = 0; i < count; i++) {
@@ -27,7 +26,7 @@ function ParticleField({ cursorRef }: { cursorRef: React.MutableRefObject<{ x: n
       arr[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
       arr[i * 3 + 2] = r * Math.cos(phi);
     }
-    setPositions(arr);
+    return arr;
   }, []);
   useFrame(() => {
     if (!group.current) return;
@@ -41,19 +40,10 @@ function ParticleField({ cursorRef }: { cursorRef: React.MutableRefObject<{ x: n
       <points>
         <bufferGeometry>
           {positions && (
-            <bufferAttribute
-              attach="attributes-position"
-              args={[positions, 3]}
-            />
-            // <bufferAttribute
-            //   attach="attributes-position"
-            //   count={positions.length / 3}
-            //   array={positions}
-            //   itemSize={3}
-            // />
+            <bufferAttribute attach="attributes-position" args={[positions, 3]} />
           )}
         </bufferGeometry>
-        <pointsMaterial size={0.02} color="#9ca3af" opacity={0.4} transparent />
+        <pointsMaterial size={0.02} color="#94a3b8" opacity={0.5} transparent />
       </points>
     </group>
   );
@@ -146,13 +136,13 @@ export default function Hero() {
   }, [mood]);
 
   return (
-    <section className="relative min-h-[80vh] sm:h-screen overflow-hidden bg-black text-zinc-50 sm:cursor-none">
+    <section className="relative min-h-[80vh] sm:h-screen overflow-hidden bg-gradient-to-br from-[var(--primary-light)] via-[var(--white)] to-[var(--white)] text-[var(--text-dark)] sm:cursor-none">
       <div ref={bgAurora} className="absolute inset-0">
-        <div className="absolute inset-0 bg-gradient-to-br from-black via-zinc-900 to-black" />
-        <div ref={cyanRef} className="absolute -top-40 left-1/3 h-[60vh] w-[60vw] rounded-full bg-cyan-500/20 blur-3xl opacity-20" />
-        <div ref={violetRef} className="absolute top-1/2 -left-20 h-[50vh] w-[50vw] rounded-full bg-violet-500/20 blur-3xl opacity-20" />
-        <div ref={pinkRef} className="absolute bottom-0 right-0 h-[55vh] w-[55vw] rounded-full bg-pink-500/20 blur-3xl opacity-20" />
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(255,255,255,0.05),rgba(0,0,0,0)_60%)]" />
+        <div className="absolute inset-0 bg-gradient-to-br from-[var(--primary-light)] via-[var(--white)] to-[var(--white)]" />
+        <div ref={cyanRef} className="absolute -top-40 left-1/3 h-[60vh] w-[60vw] rounded-full bg-[var(--accent)] blur-3xl opacity-20" />
+        <div ref={violetRef} className="absolute top-1/2 -left-20 h-[50vh] w-[50vw] rounded-full bg-[var(--secondary)] blur-3xl opacity-20" />
+        <div ref={pinkRef} className="absolute bottom-0 right-0 h-[55vh] w-[55vw] rounded-full bg-[var(--pink)] blur-3xl opacity-20" />
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(0,0,0,0.04),rgba(0,0,0,0)_60%)]" />
       </div>
 
       <div className="absolute inset-0">
@@ -169,9 +159,9 @@ export default function Hero() {
         onMouseMove={onMove}
         onMouseEnter={ensureAudio}
       >
-        <div className="select-none text-xs sm:text-sm tracking-[0.2em] text-zinc-400">AI Emotional Support</div>
+        <div className="select-none text-xs sm:text-sm tracking-[0.2em] text-[var(--text-muted)]">AI Emotional Support</div>
         <h1 className="mt-4 text-3xl sm:text-5xl font-semibold tracking-wide">You don’t have to carry it alone.</h1>
-        <p className="mt-4 max-w-2xl px-4 sm:px-0 text-base sm:text-lg text-zinc-300">
+        <p className="mt-4 max-w-2xl px-4 sm:px-0 text-base sm:text-lg text-[var(--text-muted)]">
           An emotionally intelligent AI that listens, understands, and supports you — privately and without judgment.
         </p>
 
@@ -180,10 +170,10 @@ export default function Hero() {
             ref={micRef}
             onMouseEnter={onMicHover}
             onMouseLeave={onMicLeave}
-            className="relative h-12 w-12 rounded-full bg-white/10 backdrop-blur ring-1 ring-white/30"
+            className="relative h-12 w-12 rounded-full bg-[var(--primary-light)] ring-1 ring-[var(--primary)]"
             title="Talk"
           >
-            <span className="absolute inset-0 rounded-full ring-2 ring-cyan-300/40" />
+            <span className="absolute inset-0 rounded-full ring-2 ring-[var(--primary)]/50" />
             <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-xl">🎙️</span>
           </button>
 
@@ -192,7 +182,7 @@ export default function Hero() {
             onFocus={onFocusInput}
             onBlur={onBlurInput}
             placeholder="Tell me what’s on your mind…"
-            className="w-full max-w-[28rem] sm:max-w-[32rem] md:max-w-[36rem] rounded-2xl bg-white/8 px-4 sm:px-6 py-3 text-zinc-100 backdrop-blur ring-1 ring-white/25 outline-none transition-all placeholder:text-zinc-400"
+            className="w-full max-w-[28rem] sm:max-w-[32rem] md:max-w-[36rem] rounded-2xl border border-black/10 bg-[var(--white)] px-4 sm:px-6 py-3 text-[var(--text-dark)] outline-none transition-all placeholder:text-[var(--text-muted)]"
           />
         </div>
 
@@ -200,29 +190,29 @@ export default function Hero() {
           <button
             onMouseEnter={ensureAudio}
             onClick={() => setMood("calm")}
-            className="h-8 w-8 rounded-full bg-cyan-400/60 ring-1 ring-white/30"
+            className="h-8 w-8 rounded-full bg-[var(--secondary)] opacity-60 ring-1 ring-black/10"
             title="Calm"
           />
           <button
             onMouseEnter={ensureAudio}
             onClick={() => setMood("anxious")}
-            className="h-8 w-8 rounded-full bg-violet-400/60 ring-1 ring-white/30"
+            className="h-8 w-8 rounded-full bg-[var(--accent)] opacity-60 ring-1 ring-black/10"
             title="Anxious"
           />
           <button
             onMouseEnter={ensureAudio}
             onClick={() => setMood("overwhelmed")}
-            className="h-8 w-8 rounded-full bg-pink-400/60 ring-1 ring-white/30"
+            className="h-8 w-8 rounded-full bg-[var(--pink)] opacity-60 ring-1 ring-black/10"
             title="Overwhelmed"
           />
         </div>
 
-        <Link href="/chat" className="mt-8 text-sm text-zinc-400 underline-offset-4 hover:text-zinc-200">
+        <Link href="/chat" className="mt-8 text-sm text-[var(--text-muted)] underline-offset-4 hover:text-[var(--text-dark)]">
           Switch to full conversation
         </Link>
       </div>
 
-      <div ref={cursorDot} className="pointer-events-none absolute z-50 hidden sm:block h-4 w-4 -translate-x-2 -translate-y-2 rounded-full bg-white/80 shadow-[0_0_40px_8px_rgba(255,255,255,0.2)]" />
+      <div ref={cursorDot} className="pointer-events-none absolute z-50 hidden sm:block h-4 w-4 -translate-x-2 -translate-y-2 rounded-full bg-[var(--primary)]/80 shadow-[0_0_40px_8px_rgba(77,168,255,0.25)]" />
     </section>
   );
 }

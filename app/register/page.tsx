@@ -9,78 +9,78 @@ export const metadata: Metadata = {
 
 export default function RegisterPage() {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-black via-zinc-900 to-black text-zinc-50">
+    <div className="min-h-screen bg-gradient-to-br from-[var(--primary-light)] via-[var(--white)] to-[var(--white)] text-[var(--text-dark)]">
       <Container className="py-24 sm:py-32">
-        <div className="mx-auto w-full max-w-md sm:max-w-lg rounded-2xl bg-white/8 p-6 sm:p-8 backdrop-blur ring-1 ring-white/25">
+        <div className="mx-auto w-full max-w-md sm:max-w-lg rounded-2xl bg-[var(--white)] p-6 sm:p-8 ring-1 ring-black/10">
           <div className="text-center">
-            <div className="text-xs sm:text-sm tracking-[0.2em] text-zinc-400">Join us</div>
+            <div className="text-xs sm:text-sm tracking-[0.2em] text-[var(--text-muted)]">Join us</div>
             <h1 className="mt-2 text-2xl sm:text-3xl font-semibold">Create your account</h1>
-            <p className="mt-2 text-sm text-zinc-300">Start your guided emotional journey.</p>
+            <p className="mt-2 text-sm text-[var(--text-muted)]">Start your guided emotional journey.</p>
           </div>
 
           <form className="mt-6 space-y-4">
             <div>
-              <label htmlFor="name" className="text-sm text-zinc-300">Full name</label>
+              <label htmlFor="name" className="text-sm text-[var(--text-dark)]">Full name</label>
               <input
                 id="name"
                 type="text"
                 placeholder="Alex Smith"
-                className="mt-2 w-full rounded-xl bg-white/8 px-4 py-2 text-zinc-100 outline-none backdrop-blur ring-1 ring-white/25 placeholder:text-zinc-400"
+                className="mt-2 w-full rounded-xl border border-black/10 bg-[var(--white)] px-4 py-2 text-[var(--text-dark)] outline-none placeholder:text-[var(--text-muted)]"
               />
             </div>
             <div>
-              <label htmlFor="email" className="text-sm text-zinc-300">Email</label>
+              <label htmlFor="email" className="text-sm text-[var(--text-dark)]">Email</label>
               <input
                 id="email"
                 type="email"
                 placeholder="you@example.com"
-                className="mt-2 w-full rounded-xl bg-white/8 px-4 py-2 text-zinc-100 outline-none backdrop-blur ring-1 ring-white/25 placeholder:text-zinc-400"
+                className="mt-2 w-full rounded-xl border border-black/10 bg-[var(--white)] px-4 py-2 text-[var(--text-dark)] outline-none placeholder:text-[var(--text-muted)]"
               />
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
-                <label htmlFor="password" className="text-sm text-zinc-300">Password</label>
+                <label htmlFor="password" className="text-sm text-[var(--text-dark)]">Password</label>
                 <input
                   id="password"
                   type="password"
                   placeholder="••••••••"
-                  className="mt-2 w-full rounded-xl bg-white/8 px-4 py-2 text-zinc-100 outline-none backdrop-blur ring-1 ring-white/25 placeholder:text-zinc-400"
+                  className="mt-2 w-full rounded-xl border border-black/10 bg-[var(--white)] px-4 py-2 text-[var(--text-dark)] outline-none placeholder:text-[var(--text-muted)]"
                 />
               </div>
               <div>
-                <label htmlFor="confirm" className="text-sm text-zinc-300">Confirm</label>
+                <label htmlFor="confirm" className="text-sm text-[var(--text-dark)]">Confirm</label>
                 <input
                   id="confirm"
                   type="password"
                   placeholder="••••••••"
-                  className="mt-2 w-full rounded-xl bg-white/8 px-4 py-2 text-zinc-100 outline-none backdrop-blur ring-1 ring-white/25 placeholder:text-zinc-400"
+                  className="mt-2 w-full rounded-xl border border-black/10 bg-[var(--white)] px-4 py-2 text-[var(--text-dark)] outline-none placeholder:text-[var(--text-muted)]"
                 />
               </div>
             </div>
 
-            <label className="mt-2 flex items-start gap-2 text-sm text-zinc-300">
-              <input type="checkbox" className="mt-0.5 h-4 w-4 rounded border border-white/20 bg-white/5" />
+            <label className="mt-2 flex items-start gap-2 text-sm text-zinc-700">
+              <input type="checkbox" className="mt-0.5 h-4 w-4 rounded border border-black/10 bg-white" />
               I agree to the Terms and Privacy Policy.
             </label>
 
             <button
               type="button"
-              className="mt-2 w-full rounded-xl bg-cyan-500/80 px-4 py-2 text-black ring-1 ring-white/20 hover:bg-cyan-400"
+              className="mt-2 w-full rounded-xl bg-sky-600 px-4 py-2 text-white hover:bg-sky-500"
             >
               Create Account
             </button>
           </form>
 
           <div className="mt-6 flex items-center gap-3">
-            <div className="h-px w-full bg-white/15" />
-            <div className="text-xs text-zinc-400">or</div>
-            <div className="h-px w-full bg-white/15" />
+            <div className="h-px w-full bg-black/10" />
+            <div className="text-xs text-zinc-500">or</div>
+            <div className="h-px w-full bg-black/10" />
           </div>
 
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             <button
               type="button"
-              className="flex items-center justify-center gap-2 rounded-xl bg-white px-4 py-2 text-sm font-medium text-black ring-1 ring-white/25 hover:bg-white/90"
+              className="flex items-center justify-center gap-2 rounded-xl bg-white px-4 py-2 text-sm font-medium text-black ring-1 ring-black/10 hover:bg-white/90"
               aria-label="Sign up with Google"
             >
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" className="h-5 w-5">
@@ -103,8 +103,8 @@ export default function RegisterPage() {
             </button>
           </div>
 
-          <div className="mt-6 text-center text-sm text-zinc-400">
-            Already have an account? <Link href="/login" className="hover:text-zinc-200">Sign in</Link>
+          <div className="mt-6 text-center text-sm text-zinc-600">
+            Already have an account? <Link href="/login" className="hover:text-zinc-900">Sign in</Link>
           </div>
         </div>
       </Container>

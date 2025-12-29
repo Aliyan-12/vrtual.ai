@@ -76,7 +76,7 @@ export default function Chat() {
                   if (part.type === 'tool-fetchVideos' && Array.isArray(part.output)) {
                     return part.output?.map((video: { url: string; title?: string }, j: number) => (
                       <div key={`${message.id}-${i}-${j}`} className="my-3 overflow-hidden rounded-xl">
-                        <ReactPlayer url={video.url} width="100%" height="200px" controls />
+                        <ReactPlayer src={video.url} width="100%" height="200px" controls />
                         <div className="mt-1 text-sm text-[var(--text-muted)]">{video.title}</div>
                       </div>
                     ));

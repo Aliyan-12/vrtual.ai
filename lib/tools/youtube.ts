@@ -19,13 +19,14 @@ interface YouTubeSearchItem {
   };
 }
 
-export async function searchYouTube(query: string) {
+export async function searchYouTube(query: string, maxResults = 4) {
   const url = new URL("https://www.googleapis.com/youtube/v3/search");
 
   url.searchParams.set("part", "snippet");
   url.searchParams.set("q", query);
   url.searchParams.set("type", "video");
-  url.searchParams.set("maxResults", "5");
+  url.searchParams.set("maxResults", maxResults.toString());
+  url.searchParams.set("channelId", process.env.CHANNEL_ID!);
   url.searchParams.set("key", process.env.YOUTUBE_API_KEY!);
 
   const res = await fetch(url.toString());

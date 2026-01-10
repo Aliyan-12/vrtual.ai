@@ -35,12 +35,20 @@ export default function Navbar() {
           </Link>
           <Link href="/#resources" className="text-[var(--text-muted)] hover:text-[var(--text-dark)]">Resources</Link>
           <Link href="/#how-it-works" className="text-[var(--text-muted)] hover:text-[var(--text-dark)]">How It Works</Link>
-          <Link
-            href="/chat"
-            className="rounded-full bg-[var(--primary)] px-3 py-1.5 text-white hover:bg-[var(--primary-hover)]"
-          >
-            Start Conversation
-          </Link>
+          <div className="flex gap-2">
+            <Link
+              href="/login"
+              className="rounded-full bg-[var(--primary)] px-3 py-1.5 text-white hover:bg-[var(--primary-hover)]"
+            >
+              Login
+            </Link>
+            <Link
+              href="/register"
+              className="rounded-full bg-[var(--secondary)] px-3 py-1.5 text-white hover:text-black hover:bg-[var(--secondary-hover)]"
+            >
+              Register
+            </Link>
+          </div>
         </div>
       </div>
       {open && (
@@ -51,7 +59,10 @@ export default function Navbar() {
               <Link href="/chat" className={pathname?.startsWith("/chat") ? "text-[var(--text-dark)]" : "hover:text-[var(--text-dark)]"} onClick={() => setOpen(false)}>Chat</Link>
               <Link href="/#resources" className="hover:text-[var(--text-dark)]" onClick={() => setOpen(false)}>Resources</Link>
               <Link href="/#how-it-works" className="hover:text-[var(--text-dark)]" onClick={() => setOpen(false)}>How It Works</Link>
-              <Link href="/chat" className="w-fit rounded-full bg-[var(--primary)] px-3 py-1.5 text-white hover:bg-[var(--primary-hover)]" onClick={() => setOpen(false)}>Start Conversation</Link>
+              <div className="flex gap-2">
+                <Link href="/login" className="w-fit rounded-full bg-[var(--primary)] px-3 py-1.5 text-white hover:bg-[var(--primary-hover)]" onClick={() => setOpen(false)}>Login</Link>
+                <Link href="/register" className="w-fit rounded-full bg-[var(--secondary)] px-3 py-1.5 text-white hover:text-black hover:bg-[var(--secondary-hover)]" onClick={() => setOpen(false)}>Register</Link>
+              </div>
             </div>
           </div>
         </div>

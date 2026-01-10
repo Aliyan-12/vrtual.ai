@@ -10,7 +10,7 @@ export const metadata: Metadata = {
 export default function LoginPage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-[var(--primary-light)] via-[var(--white)] to-[var(--white)] text-[var(--text-dark)]">
-      <Container className="py-24 sm:py-32">
+      <Container className="py-12 sm:py-22">
         <div className="mx-auto w-full max-w-md sm:max-w-lg rounded-2xl bg-[var(--white)] p-6 sm:p-8 ring-1 ring-black/10">
           <div className="text-center">
             <div className="text-xs sm:text-sm tracking-[0.2em] text-[var(--text-muted)]">Welcome back</div>

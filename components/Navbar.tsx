@@ -2,10 +2,16 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
+import { useSession, signOut } from "next-auth/react";
 
 export default function Navbar() {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
+  const { data: session, status } = useSession();
+  
+  // if (status === "loading") return <p>Loading...</p>;
+  // if (!session) return <p>You are not logged in.</p>;
+
   return (
     <nav className="sticky top-0 z-50 w-full bg-white/70 backdrop-blur">
       <div className="mx-auto flex max-w-5xl items-center justify-between border-b border-black/10 px-4 sm:px-6 py-3 text-[var(--text-dark)]">
@@ -35,6 +41,7 @@ export default function Navbar() {
           </Link>
           <Link href="/#resources" className="text-[var(--text-muted)] hover:text-[var(--text-dark)]">Resources</Link>
           <Link href="/#how-it-works" className="text-[var(--text-muted)] hover:text-[var(--text-dark)]">How It Works</Link>
+          {/* {session ? "Logged in" : "Not logged in"} */}
           <div className="flex gap-2">
             <Link
               href="/login"

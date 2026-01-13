@@ -11,12 +11,18 @@
   "dependencies": {
     "@ai-sdk/groq": "^2.0.33",
     "@ai-sdk/react": "^2.0.118",
+    "@auth/prisma-adapter": "^2.11.1",
+    "@prisma/adapter-pg": "^7.2.0",
+    "@prisma/client": "^7.2.0",
+    "@prisma/extension-accelerate": "^3.0.1",
     "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.4.2",
     "ai": "^5.0.116",
+    "bcrypt": "^6.0.0",
     "dotenv": "^17.2.3",
     "gsap": "^3.14.2",
     "next": "16.0.10",
+    "next-auth": "^4.24.13",
     "node-fetch": "^3.3.2",
     "react": "19.2.1",
     "react-dom": "19.2.1",
@@ -26,11 +32,13 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@types/bcrypt": "^6.0.0",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.0.10",
+    "prisma": "^7.2.0",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

@@ -2,6 +2,7 @@
 import Container from "@/components/Container";
 import Link from "next/link";
 import { signIn } from "next-auth/react";
+import toast from "react-hot-toast";
 
 export default function LoginForm() {
     async function handleSubmit(e: any) {
@@ -18,9 +19,17 @@ export default function LoginForm() {
                 redirect: false,
             });
             
-            if (res?.error) return console.log(res);
-            else window.location.href = res?.url || "/";
+            if (res?.error) {
+                toast.error("Unknown error occured: " + res.error);
+                return console.log(res);
+            }
+            else {
+                // window.location.href = res?.url || "/";
+                console.log("User Logged In.");
+                toast.success("User Logged In.");
+            }
         } catch (err) {
+            toast.error("Unknown error: " + err);
             console.log("Unknown error: " + err);
         } finally {
             console.log("Login process done");

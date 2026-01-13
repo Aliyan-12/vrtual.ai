@@ -1,12 +1,9 @@
 "use client";
-import { useState } from "react";
 import Container from "@/components/Container";
 import Link from "next/link";
+import toast from "react-hot-toast";
 
 export default function RegisterForm() {
-    const [error, setError] = useState<string | null>(null);
-    const [loading, setLoading] = useState(false);
-
     async function handleSubmit(e: any) {
         e.preventDefault();
 
@@ -24,14 +21,18 @@ export default function RegisterForm() {
 
             if (!res.ok) {
             const text = await res.text();
-                setError(text || "Something went wrong");
+                toast.error(text || "Something went wrong!");
+                console.log(text || "Something went wrong");
             } else {
-                window.location.href = "/login";
+                // window.location.href = "/login";
+                toast.success("User Registered!");
+                console.log("User Registered!");
             }
         } catch (err) {
-            setError("Network error. Please try again.");
+            toast.error("Network error. Please try again.");
+            console.log("Network error. Please try again.");
         } finally {
-            setLoading(false);
+            console.log("Registration process done");
         }
     }
 
@@ -46,11 +47,6 @@ export default function RegisterForm() {
                     </div>
 
                     <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
-                        {error && (
-                            <div className="rounded-md bg-red-100 px-4 py-2 text-sm text-red-700">
-                                {error}
-                            </div>
-                        )}
                         <div>
                             <label htmlFor="name" className="text-sm text-[var(--text-dark)]">Full name</label>
                             <input
@@ -103,7 +99,7 @@ export default function RegisterForm() {
                             type="submit"
                             className="mt-2 w-full rounded-xl bg-sky-600 px-4 py-2 text-white hover:bg-sky-500"
                         >
-                            {loading ? "Creating Account..." : "Create Account"}
+                            Create Account
                         </button>
                     </form>
 

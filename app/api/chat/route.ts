@@ -17,5 +17,6 @@ export async function POST(req: Request) {
   //   prompt: 'I am subject to tension and anxiety due to my loss of job and financial issues. Can u motivate me?'
   // });
 
+  // return Response.json(result.content);
   return result.toUIMessageStreamResponse();
 }

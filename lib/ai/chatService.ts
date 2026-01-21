@@ -8,7 +8,8 @@ import {
 } from "ai";
 import { EmotionGuideAgent } from "./agent";
 import { z } from 'zod';
-import { groq } from "@ai-sdk/groq";
+// import { groq } from "@ai-sdk/groq";
+import { google } from "@ai-sdk/google";
 import { searchYouTube } from '../tools/youtube';
 
 type ChatOptions = {
@@ -42,7 +43,8 @@ export class ChatService {
         const modelMessages = convertToModelMessages(messages);
         // console.log(res.content);
         return streamText({
-          model: groq("moonshotai/kimi-k2-instruct-0905"),
+          // model: groq("moonshotai/kimi-k2-instruct-0905"),
+          model: google("gemini-2.5-flash"),
           temperature: 0,
           system: `
               You are Dr. Erik Fisher, speaking personally and warmly to the user.

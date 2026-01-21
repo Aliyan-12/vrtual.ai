@@ -9,7 +9,7 @@ import type { Session, User } from "next-auth";
 type SessionStrategy = "jwt" | "database";
 
 export const authOptions = {
-  adapter: PrismaAdapter(prisma),
+  // adapter: PrismaAdapter(prisma),
 
   session: {
     strategy: "database" as SessionStrategy,

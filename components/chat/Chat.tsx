@@ -173,17 +173,27 @@ export default function Chat() {
                 }
               >
                 {message.parts.map((part, i) => {
-                  console.log(message, part);
+                  // console.log(message, part);
                   if (part.type === 'text') {
                     return <div key={`${message.id}-${i}`} dangerouslySetInnerHTML={{ __html: part.text }} />;
                   }
                   if (part.type === 'tool-fetchVideos' && Array.isArray(part.output)) {
-                    return part.output?.map((video: { url: string; title?: string }, j: number) => (
-                      <div key={`${message.id}-${i}-${j}`} className="my-3 overflow-hidden rounded-xl">
-                        <ReactPlayer src={video.url} width="100%" height="200px" controls />
-                        <div className="mt-1 text-sm text-[var(--text-muted)]">{video.title}</div>
-                      </div>
-                    ));
+                    return part.output?.map((video: { url: string; title?: string; selectedSection?: {startSeconds: number, reason: string}; startUrl?: string }, j: number) => {
+                      const videoSrc = video.selectedSection
+                          ? video.startUrl
+                          : video.url;
+                      return (
+                        <div key={`${message.id}-${i}-${j}`} className="my-3 overflow-hidden rounded-xl">
+                          <ReactPlayer src={videoSrc} width="100%" height="200px" controls 
+                          config={{
+                            youtube: {
+                              start: video.selectedSection?.startSeconds ?? 0
+                            }
+                          }}/>
+                          <div className="mt-1 text-sm text-[var(--text-muted)]">{video.title}</div>
+                        </div>
+                      );
+                    });
                   }
                 })}
               </div>

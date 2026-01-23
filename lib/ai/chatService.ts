@@ -10,7 +10,8 @@ import { EmotionGuideAgent } from "./agent";
 import { z } from 'zod';
 // import { groq } from "@ai-sdk/groq";
 import { google } from "@ai-sdk/google";
-import { searchYouTube } from '../tools/youtube';
+import { searchYouTube, fetchFullDescription } from '../tools/youtube';
+import { extractTimestamps } from '../tools/timestamp';
 
 type ChatOptions = {
   stream?: boolean;
@@ -53,6 +54,8 @@ export class ChatService {
 
               You should try to provide videos to the user that are relevant using the tool.
 
+              You should try to provide emotionally relevant timestamp for each video to the user using the tool.
+
               Make sure not to overwhelm the user by multiple different videos at same time. First share 1-2 videos and wait till user says that I liked a video and then asks for more relevant videos. Ask the user about which video he like most so You can remember the preferences/mood/type of user.
 
               ────────────────────────────────────────
@@ -63,6 +66,13 @@ export class ChatService {
               • If you donot find video for user, You must change the query for the tool and try 3 times.
               • If still you donot find the video, you must return a video related to user's mood searching Erik Fisher youtube channel only.
               • Never return video data from your own.
+
+              ────────────────────────────────────────
+              Video Timestamp Selection Rules
+              ────────────────────────────────────────
+              • Video descriptions may contain timestamps in format: 0:00 Introduction.
+              • Video timestamps are pre-defined in description. You must only reference the provided timestamp.
+              • Never guess timestamps yourself. Each video must have one selected timestamp.
               
               ────────────────────────────────────────
               TONE
@@ -78,9 +88,11 @@ export class ChatService {
               description: "Search YouTube for calm, helpful videos from Erik Fisher's channel.",
               inputSchema: z.object({
                 query: z.string().describe("Search query for Erik Fisher channel"),
+                userContext: z.string().describe("User's context"),
               }),
-              execute: async ({ query }) => {
+              execute: async ({ query, userContext }) => {
                 let videos = await searchYouTube(query);
+                // let videos = await getVideos(query);
 
                 // If empty, retry with known channel keywords
                 if (videos.length === 0) {
@@ -100,23 +112,98 @@ export class ChatService {
                   videos = await searchYouTube("life lessons");
                 }
 
-                return videos;
-                // const data = await searchYouTube(query, 4);
-                // console.log(data);
-                // return data;
+                // console.log("Videos: ", videos);
+                
+                const enriched = [];
+                // const enriched = (videos);getEnrichedVideos
+
+                for (const video of videos) {
+                  const fullDescription = await fetchFullDescription(video.videoId);
+                  const sections = extractTimestamps(fullDescription);
+
+                  if (!sections.length) {
+                    enriched.push(video);
+                    continue;
+                  }
+
+                  const output = await generateText({
+                      model: google("gemini-2.5-flash"),
+                      temperature: 0,
+                      experimental_output: Output.object({
+                        schema: z.object({
+                          startSeconds: z.number().describe('The timestamp selected in seconds.'),
+                          reason: z.string().describe('Short Reason for selecting this timestamp.')
+                        })
+                      }),
+                      prompt: `
+                          User emotion/context:
+                          "${userContext}"
+
+                          Video title:
+                          "${video.title}"
+
+                          Video sections:
+                          ${sections.map(s => `- ${s.time} (${s.seconds}s): ${s.label ?? ""}`).join("\n")}
+
+                          Choose the ONE section that best matches the user's emotional need.
+                      `,
+                  });
+
+                  // console.log(JSON.parse(output.text));
+                  const startSeconds = JSON.parse(output.text).startSeconds;
+
+                  enriched.push({
+                    ...video,
+                    selectedSection: JSON.parse(output.text),
+                    startUrl: `${video.url}&t=${startSeconds}s`,
+                    embedUrl: `https://www.youtube.com/embed/${video.videoId}?start=${startSeconds}`,
+                  });
+                }
+
+                console.log("Final enriched videos:", enriched);
+                return enriched;
               },
             }),
-            // fetchVideos: tool({
-            // //   name: 'search_youtube',
-            //   description: "Search YouTube for calm, helpful videos from Erik Fisher's channel.",
+            // forwardVideos: tool({
+            // //   name: 'forward_video',
+            //   description: "Select the most emotionally relevant timestamp from each video description.",
             //   inputSchema: z.object({
-            //     query: z.string().describe("Search query for YouTube"),
+            //     userContext: z.string(),
+            //     videos: z.array(
+            //       z.object({
+            //         id: z.string(),
+            //         title: z.string().optional(),
+            //         description: z.string().optional(),
+            //         url: z.string(),
+            //       })
+            //     ),
             //   }),
-            //   execute: async ({ query }) => {
-            //     const data = await searchYouTube(query, 4);
-            //     console.log(data);
-            //     return data;
-            //   },
+            //   execute: async ({ userContext, videos }) => {
+            //       console.log("forwarding: ", userContext, videos);
+            //       const enriched = [];
+
+            //       for (const video of videos) {
+            //         const sections = extractTimestamps(video.description);
+
+            //         if (sections.length === 0) {
+            //           enriched.push(video);
+            //           continue;
+            //         }
+
+            //         // Let Gemini decide WHICH section fits best
+                    
+
+            //         // const selected = JSON.parse(output);
+
+            //         enriched.push({
+            //           ...video,
+            //           selectedSection: output.content,
+            //         });
+            //       }
+
+            //       console.log("Enriched: ", enriched);
+            //       return enriched;
+            //     },
             // })
           },
           // experimental_output: Output.object({

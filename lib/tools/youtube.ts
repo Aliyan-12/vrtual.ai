@@ -29,13 +29,13 @@ export async function searchYouTube(query: string, maxResults = 4) {
   url.searchParams.set("channelId", process.env.CHANNEL_ID!);
   url.searchParams.set("key", process.env.YOUTUBE_API_KEY!);
 
-  console.log(url.toString());
+  // console.log(url.toString());
   const res = await fetch(url.toString());
   if(!res.ok) {
     throw new Error("YouTube API request failed");
   }
 
-  console.log(res);
+  // console.log(res);
   const data = (await res.json()) as YouTubeSearchResponse
 
   return data.items.map((item: any) => ({
@@ -45,4 +45,18 @@ export async function searchYouTube(query: string, maxResults = 4) {
     thumbnail: item.snippet.thumbnails.medium.url,
     url: `https://www.youtube.com/watch?v=${item.id.videoId}`,
   }));
+}
+
+export async function fetchFullDescription(videoId: string) {
+  const res = await fetch(
+    `https://www.googleapis.com/youtube/v3/videos?` +
+    new URLSearchParams({
+      part: "snippet",
+      id: videoId,
+      key: process.env.YOUTUBE_API_KEY!,
+    })
+  );
+
+  const json = await res.json() as any;
+  return json.items?.[0]?.snippet?.description ?? "";
 }

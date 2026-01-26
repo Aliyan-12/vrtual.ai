@@ -118,7 +118,7 @@ export class ChatService {
                 // const enriched = (videos);getEnrichedVideos
 
                 for (const video of videos) {
-                  const fullDescription = await fetchFullDescription(video.videoId);
+                  const fullDescription = await fetchFullDescription(video.id);
                   const sections = extractTimestamps(fullDescription);
 
                   if (!sections.length) {
@@ -156,7 +156,7 @@ export class ChatService {
                     ...video,
                     selectedSection: JSON.parse(output.text),
                     startUrl: `${video.url}&t=${startSeconds}s`,
-                    embedUrl: `https://www.youtube.com/embed/${video.videoId}?start=${startSeconds}`,
+                    embedUrl: `https://www.youtube.com/embed/${video.id}?start=${startSeconds}`,
                   });
                 }
 

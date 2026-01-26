@@ -41,7 +41,7 @@ export async function searchYouTube(query: string, maxResults = 4) {
   return data.items.map((item: any) => ({
     title: item.snippet.title,
     description: item.snippet.description,
-    videoId: item.id.videoId,
+    id: item.id.videoId,
     thumbnail: item.snippet.thumbnails.medium.url,
     url: `https://www.youtube.com/watch?v=${item.id.videoId}`,
   }));

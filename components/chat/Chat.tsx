@@ -84,7 +84,26 @@ export default function Chat() {
               }}
               className="flex items-end gap-3"
             >
-              <button
+              <button onClick={async () => {
+                  if (!text.trim()) return;
+
+                  const res = await fetch("/api/voice", {
+                    method: "POST",
+                    body: JSON.stringify({ text }),
+                  });
+
+                  const { audio } = await res.json();
+                  if (!audio) return;
+
+                  const audioBlob = new Blob(
+                    [Uint8Array.from(atob(audio), c => c.charCodeAt(0))],
+                    { type: "audio/mp3" }
+                  );
+
+                  const url = URL.createObjectURL(audioBlob);
+                  const audioPlayer = new Audio(url);
+                  audioPlayer.play();
+                }}
                 type="button"
                 className="h-10 w-10 rounded-full bg-[var(--primary-light)] text-xl ring-1 ring-[var(--primary)]"
                 title="Toggle microphone"

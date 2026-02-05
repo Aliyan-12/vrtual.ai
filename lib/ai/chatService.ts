@@ -41,7 +41,7 @@ const ResponseSchema = z.object({
 
 export class ChatService {
     static async stream(messages: UIMessage[]) {
-        const modelMessages = convertToModelMessages(messages);
+        const modelMessages = await convertToModelMessages(messages);
         // console.log(res.content);
         return streamText({
           // model: groq("moonshotai/kimi-k2-instruct-0905"),

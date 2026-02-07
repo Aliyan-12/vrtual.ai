@@ -5,8 +5,9 @@ import { groq } from '@ai-sdk/groq';
 import 'dotenv/config';
 import { convertTextToSpeech } from '@/lib/utils/helper';
 import path from 'path';
+import { cookies } from "next/headers";
 
-export async function POST(req: Request) {
+export async function POST(req: Request, res: Response) {
   const { messages }: { messages: UIMessage[] } = await req.json();
 
   // streamText({
@@ -14,15 +15,16 @@ export async function POST(req: Request) {
   //   messages: convertToModelMessages(messages),
   // });
   const result = await ChatService.stream(messages);
-  // const streamResponse = result.toUIMessageStreamResponse();
   
-  // await result.text.then(async (fullText: string) => {
-  //   const response = await convertTextToSpeech(fullText);
-
-  //   console.log(response);
-  //   streamResponse.headers.set("x-audio-file", response?.filepath);
-  //   streamResponse.headers.set("x-audio-mime", response?.mimeType);
-  // });
+  await result.text.then(async (fullText: string) => {
+    const response = await convertTextToSpeech(fullText);
+    // console.log(response);
+    (await cookies()).set("audio_file", `${response.filename}.${response.mimeType}`, {
+      path: "/chat",
+      httpOnly: false,
+      maxAge: 3600,
+    });
+  });
 
   return result.toUIMessageStreamResponse();
   // const result = EmotionGuideAgent.stream({

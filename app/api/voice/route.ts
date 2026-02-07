@@ -9,10 +9,11 @@ export async function POST(req: Request) {
     const model = "gemini-2.5-pro-preview-tts";
 
     const stream = await VoiceService.textToSpeechStream(model, text);
-    const { filepath, mimeType } = await VoiceService.saveSpeechToFile(stream);
+    const { filename, filepath, mimeType } = await VoiceService.saveSpeechToFile(stream);
 
     return NextResponse.json({
         filepath: filepath,
+        filename: filename,
         mimeType: mimeType
     }, {
       status: 200

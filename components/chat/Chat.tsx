@@ -11,23 +11,17 @@ export default function Chat() {
   const { messages, sendMessage } = useChat({
     onFinish: async (response) => {
       try {
-        const fullText = response.message.parts
-                      .filter(p => p.type === "text")
-                      .map(p => p.text)
-                      .join(" ");
-        const audioResponse = await fetch(`/api/voice`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ text: fullText })
-        });
+        const cookieValue = document.cookie
+          .split("; ")
+          .find(row => row.startsWith("audio_file="))
+          ?.split("=")[1];
 
-        if(!audioResponse.ok) {
-          console.error("Voice conversion unknown error:", audioResponse.text());
+        console.log(cookieValue);
+        if (cookieValue) {
+          const decoded = decodeURIComponent(cookieValue);
+          const audio = new Audio(`/generated/${decoded}`);
+          audio.play();
         }
-
-        const data = await audioResponse.json();
-        const audio = new Audio(data.filepath);
-        await audio.play();
       } catch (err) {
         console.error("Voice conversion error:", err);
       }

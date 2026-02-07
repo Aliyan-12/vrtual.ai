@@ -68,6 +68,6 @@ export class VoiceService {
         }
       }
       
-      return {filepath: filePath, mimeType: fileExtension};
+      return {filepath: filePath, filename: fileName, mimeType: fileExtension};
     }
 }

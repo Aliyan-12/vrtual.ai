@@ -7,7 +7,7 @@ import { convertTextToSpeech } from '@/lib/utils/helper';
 import path from 'path';
 import { cookies } from "next/headers";
 
-export async function POST(req: Request, res: Response) {
+export async function POST(req: Request) {
   const { messages }: { messages: UIMessage[] } = await req.json();
 
   // streamText({

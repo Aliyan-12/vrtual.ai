@@ -48,6 +48,7 @@ export default function Chat() {
     connected,
     recording,
     transcripts,
+    videos: voiceVideos,
   } = useMicrophone();
 
   const [text, setText] = useState("");
@@ -107,7 +108,7 @@ export default function Chat() {
   useEffect(() => {
     if (!scrollRef.current) return;
     scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-  }, [messages, isThinking, transcripts]);
+  }, [messages, isThinking, transcripts, voiceVideos]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[var(--primary-light)] via-[var(--white)] to-[var(--white)] text-[var(--text-dark)]">
@@ -263,6 +264,49 @@ export default function Chat() {
                   </div>
                 </div>
               ))}
+              {voiceVideos.map((video, idx) => {
+                const videoKey = `voice-${video.id}-${idx}`;
+                const liked = likedVideos.has(videoKey);
+                return (
+                  <div key={videoKey} className="mb-3">
+                    <div className="inline-block max-w-[72ch] rounded-2xl bg-[var(--white)] px-4 py-2 ring-1 ring-black/10">
+                      <div className="my-2 flex items-start gap-2">
+                        <div className="flex-1 overflow-hidden rounded-xl">
+                          {video.embedUrl ? (
+                            <iframe width="100%" height="200px" src={video.embedUrl} />
+                          ) : (
+                            <ReactPlayer src={video.url} width="100%" height="200px" controls />
+                          )}
+                          <div className="mt-1 text-sm text-[var(--text-muted)]">{video.title}</div>
+                        </div>
+                        <button
+                          onClick={() => toggleLike(videoKey)}
+                          className={`mt-2 shrink-0 flex items-center justify-center w-9 h-9 rounded-full border transition-all duration-200 cursor-pointer ${
+                            liked
+                              ? "bg-red-50 border-red-300 text-red-500 scale-110"
+                              : "bg-white border-black/10 text-[var(--text-muted)] hover:border-red-300 hover:text-red-400"
+                          }`}
+                        >
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            viewBox="0 0 24 24"
+                            fill={liked ? "currentColor" : "none"}
+                            stroke="currentColor"
+                            strokeWidth={2}
+                            className="w-4 h-4"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z"
+                            />
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>

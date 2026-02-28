@@ -1,9 +1,17 @@
 import { useState, useRef, useCallback } from "react";
-import { GoogleGenAI, Modality, Session } from "@google/genai";
+import { GoogleGenAI, Modality, Session, Type } from "@google/genai";
+import { SYSTEM_PROMPT, FETCH_VIDEOS_DESCRIPTION } from "@/lib/ai/systemPrompt";
 
 export type VoiceTranscript = {
   role: "user" | "assistant";
   text: string;
+};
+
+export type VoiceVideo = {
+  id: string;
+  url: string;
+  title?: string;
+  embedUrl?: string;
 };
 
 const PCM_WORKLET_CODE = `
@@ -29,6 +37,7 @@ export function useMicrophone() {
   const [connected, setConnected] = useState(false);
   const [recording, setRecording] = useState(false);
   const [transcripts, setTranscripts] = useState<VoiceTranscript[]>([]);
+  const [videos, setVideos] = useState<VoiceVideo[]>([]);
 
   const sessionRef = useRef<Session | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
@@ -86,6 +95,42 @@ export function useMicrophone() {
     });
   }
 
+  async function handleToolCall(session: Session, functionCalls: any[]) {
+    const responses = [];
+
+    for (const call of functionCalls) {
+      if (call.name === "fetchVideos") {
+        try {
+          const res = await fetch("/api/voice/tool", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              query: call.args?.query || "",
+              userContext: call.args?.userContext || "",
+            }),
+          });
+          const result = await res.json();
+          setVideos(prev => [...prev, ...result]);
+          responses.push({
+            id: call.id,
+            name: call.name,
+            response: { result },
+          });
+        } catch {
+          responses.push({
+            id: call.id,
+            name: call.name,
+            response: { error: "Failed to fetch videos" },
+          });
+        }
+      }
+    }
+
+    if (responses.length > 0) {
+      session.sendToolResponse({ functionResponses: responses });
+    }
+  }
+
   const connect = useCallback(async () => {
     if (sessionRef.current) return sessionRef.current;
 
@@ -102,8 +147,29 @@ export function useMicrophone() {
             prebuiltVoiceConfig: { voiceName: "Zephyr" },
           },
         },
+        systemInstruction: SYSTEM_PROMPT,
         inputAudioTranscription: {},
         outputAudioTranscription: {},
+        tools: [{
+          functionDeclarations: [{
+            name: "fetchVideos",
+            description: FETCH_VIDEOS_DESCRIPTION,
+            parameters: {
+              type: Type.OBJECT,
+              properties: {
+                query: {
+                  type: Type.STRING,
+                  description: "Search query for Erik Fisher channel",
+                },
+                userContext: {
+                  type: Type.STRING,
+                  description: "User's emotional context based on conversation so far",
+                },
+              },
+              required: ["query", "userContext"],
+            },
+          }],
+        }],
       },
       callbacks: {
         onopen: () => {
@@ -128,6 +194,10 @@ export function useMicrophone() {
 
           if (msg.serverContent?.interrupted) {
             playbackTimeRef.current = 0;
+          }
+
+          if (msg.toolCall?.functionCalls) {
+            handleToolCall(sessionRef.current!, msg.toolCall.functionCalls);
           }
         },
         onerror: (err: any) => {
@@ -233,5 +303,5 @@ export function useMicrophone() {
     setConnected(false);
   }
 
-  return { connect, startRecording, stopRecording, disconnect, recording, connected, transcripts };
+  return { connect, startRecording, stopRecording, disconnect, recording, connected, transcripts, videos };
 }

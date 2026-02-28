@@ -1,125 +1,224 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useCallback } from "react";
 import { GoogleGenAI, Modality, Session } from "@google/genai";
 
+// AudioWorklet processor code — captures raw 16-bit PCM at 16kHz mono
+const PCM_WORKLET_CODE = `
+class PcmProcessor extends AudioWorkletProcessor {
+  process(inputs) {
+    const input = inputs[0];
+    if (input.length > 0) {
+      const float32 = input[0]; // mono channel
+      const int16 = new Int16Array(float32.length);
+      for (let i = 0; i < float32.length; i++) {
+        const s = Math.max(-1, Math.min(1, float32[i]));
+        int16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+      }
+      this.port.postMessage(int16.buffer, [int16.buffer]);
+    }
+    return true;
+  }
+}
+registerProcessor("pcm-processor", PcmProcessor);
+`;
+
 export function useMicrophone() {
-  const [session, setSession] = useState<Session | null>(null);
   const [connected, setConnected] = useState(false);
   const [recording, setRecording] = useState(false);
-  const recorderRef = useRef<MediaRecorder | null>(null);
 
-  const ai = new GoogleGenAI({
-    apiKey: process.env.NEXT_PUBLIC_GEMINI_API_KEY!,
-  });
+  const sessionRef = useRef<Session | null>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const workletNodeRef = useRef<AudioWorkletNode | null>(null);
+  const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
 
-  async function connect() {
-    if (session) return session;
+  // Playback: queue PCM chunks and play via AudioContext
+  const playbackCtxRef = useRef<AudioContext | null>(null);
+  const playbackTimeRef = useRef(0);
 
-    const s = await ai.live.connect({
-      model: "gemini-live-2.5-flash-preview",
+  function getPlaybackCtx() {
+    if (!playbackCtxRef.current) {
+      playbackCtxRef.current = new AudioContext({ sampleRate: 24000 });
+    }
+    return playbackCtxRef.current;
+  }
+
+  function playPcmChunk(base64Data: string) {
+    const ctx = getPlaybackCtx();
+    const raw = atob(base64Data);
+    const bytes = new Uint8Array(raw.length);
+    for (let i = 0; i < raw.length; i++) {
+      bytes[i] = raw.charCodeAt(i);
+    }
+
+    // Convert 16-bit LE PCM to Float32
+    const int16 = new Int16Array(bytes.buffer);
+    const float32 = new Float32Array(int16.length);
+    for (let i = 0; i < int16.length; i++) {
+      float32[i] = int16[i] / 32768;
+    }
+
+    const audioBuffer = ctx.createBuffer(1, float32.length, 24000);
+    audioBuffer.getChannelData(0).set(float32);
+
+    const source = ctx.createBufferSource();
+    source.buffer = audioBuffer;
+    source.connect(ctx.destination);
+
+    // Schedule chunks back-to-back for gapless playback
+    const now = ctx.currentTime;
+    const startTime = Math.max(now, playbackTimeRef.current);
+    source.start(startTime);
+    playbackTimeRef.current = startTime + audioBuffer.duration;
+  }
+
+  const connect = useCallback(async () => {
+    if (sessionRef.current) return sessionRef.current;
+
+    const ai = new GoogleGenAI({
+      apiKey: process.env.NEXT_PUBLIC_GOOGLE_GENERATIVE_AI_API_KEY!,
+    });
+
+    const session = await ai.live.connect({
+      model: "gemini-2.5-flash-native-audio-preview-12-2025",
       config: {
         responseModalities: [Modality.AUDIO],
-        outputAudioTranscription: {},
         speechConfig: {
           voiceConfig: {
-            prebuiltVoiceConfig: { voiceName: "Zephyr" }
-          }
-        }
+            prebuiltVoiceConfig: { voiceName: "Zephyr" },
+          },
+        },
       },
       callbacks: {
         onopen: () => {
           setConnected(true);
-          console.log("🔗 Live session opened");
+          console.log("Live session opened");
         },
-        onmessage: (msg) => {
-          if (msg.serverContent?.modelTurn?.parts?.length) {
-            msg.serverContent.modelTurn.parts.forEach((part) => {
+        onmessage: (msg: any) => {
+          // Handle audio response chunks
+          if (msg.serverContent?.modelTurn?.parts) {
+            for (const part of msg.serverContent.modelTurn.parts) {
               if (part.inlineData?.data) {
-                const base64Audio = part.inlineData.data;
-                const audioBlob = new Blob(
-                  [Uint8Array.from(atob(base64Audio), c => c.charCodeAt(0))],
-                  { type: "audio/wav" }
-                );
-                const url = URL.createObjectURL(audioBlob);
-                new Audio(url).play();
+                playPcmChunk(part.inlineData.data);
               }
-            });
+            }
           }
 
-          if (msg.serverContent?.outputTranscription) {
-            console.log("📝 Transcription:", msg.serverContent.outputTranscription.text);
+          if (msg.serverContent?.interrupted) {
+            // Model was interrupted, reset playback queue
+            playbackTimeRef.current = 0;
           }
         },
-        onerror: (err) => {
-          console.error("❌ Live session error:", err);
+        onerror: (err: any) => {
+          console.error("Live session error:", err.message || err);
         },
-        onclose: () => {
+        onclose: (e: any) => {
+          console.log("Live session closed:", e?.reason || "");
           setConnected(false);
-          console.log("🔌 Live session closed");
-          stopRecording(); // Ensure recorder stops if session closes
-        }
-      }
+          setRecording(false);
+          sessionRef.current = null;
+        },
+      },
     });
 
-    setSession(s);
-    return s;
-  }
+    sessionRef.current = session;
+    return session;
+  }, []);
 
   async function startRecording() {
-    const s = session || await connect();
-
-    if (!s) return;
+    const session = sessionRef.current || (await connect());
+    if (!session) return;
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const recorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
-      recorderRef.current = recorder;
+      const micStream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          sampleRate: 16000,
+          channelCount: 1,
+          echoCancellation: true,
+          noiseSuppression: true,
+        },
+      });
+      streamRef.current = micStream;
 
-      recorder.ondataavailable = async (e) => {
-        if (!e.data.size) return;
+      // Create AudioContext at 16kHz for mic capture
+      const audioCtx = new AudioContext({ sampleRate: 16000 });
+      audioCtxRef.current = audioCtx;
 
-        if (!connected || !session) return; // ✅ Only send if session is open
+      // Register the PCM worklet processor
+      const blob = new Blob([PCM_WORKLET_CODE], { type: "application/javascript" });
+      const workletUrl = URL.createObjectURL(blob);
+      await audioCtx.audioWorklet.addModule(workletUrl);
+      URL.revokeObjectURL(workletUrl);
 
-        const buf = await e.data.arrayBuffer();
-        const bytes = new Uint8Array(buf);
-        const base64 = btoa(String.fromCharCode(...bytes));
+      // Connect mic -> worklet
+      const source = audioCtx.createMediaStreamSource(micStream);
+      sourceRef.current = source;
 
+      const workletNode = new AudioWorkletNode(audioCtx, "pcm-processor");
+      workletNodeRef.current = workletNode;
+
+      workletNode.port.onmessage = (e: MessageEvent) => {
+        const pcmBuffer: ArrayBuffer = e.data;
+        const bytes = new Uint8Array(pcmBuffer);
+
+        // Convert to base64
+        let binary = "";
+        for (let i = 0; i < bytes.length; i++) {
+          binary += String.fromCharCode(bytes[i]);
+        }
+        const base64 = btoa(binary);
+
+        // Send raw PCM to Gemini Live API
         session.sendRealtimeInput({
-          media: {
+          audio: {
             data: base64,
-            mimeType: "audio/pcm;rate=16000"
-          }
+            mimeType: "audio/pcm;rate=16000",
+          },
         });
       };
 
-      recorder.start(150);
+      source.connect(workletNode);
+      workletNode.connect(audioCtx.destination); // needed to keep worklet running
+
       setRecording(true);
     } catch (err) {
-      console.error("🎤 Mic error:", err);
+      console.error("Mic error:", err);
     }
   }
 
   function stopRecording() {
-    setRecording(false);
-
-    // Stop MediaRecorder if running
-    if (recorderRef.current && recorderRef.current.state !== "inactive") {
-      recorderRef.current.stop();
-      recorderRef.current = null;
+    // Disconnect worklet
+    if (workletNodeRef.current) {
+      workletNodeRef.current.disconnect();
+      workletNodeRef.current = null;
+    }
+    if (sourceRef.current) {
+      sourceRef.current.disconnect();
+      sourceRef.current = null;
     }
 
-    // Send session turn complete
-    // if (session && connected) {
-    //   session.sendTurnComplete();
-    // }
+    // Stop mic tracks
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+    }
+
+    // Close capture AudioContext
+    if (audioCtxRef.current) {
+      audioCtxRef.current.close();
+      audioCtxRef.current = null;
+    }
+
+    setRecording(false);
   }
 
-  function sendText(text: string) {
-    if (!session || !connected) return;
-    session.sendClientContent({
-      turns: text,
-      turnComplete: true
-    });
+  function disconnect() {
+    stopRecording();
+    if (sessionRef.current) {
+      sessionRef.current.close();
+      sessionRef.current = null;
+    }
+    setConnected(false);
   }
 
-  return { connect, startRecording, stopRecording, sendText, recording, connected };
+  return { connect, startRecording, stopRecording, disconnect, recording, connected };
 }

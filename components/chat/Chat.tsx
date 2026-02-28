@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { useChat } from '@ai-sdk/react';
 import { convertTextToSpeech } from '@/lib/utils/helper';
+import MicButton from '@/components/buttons/MicButton';
 
 const ReactPlayer = dynamic(() => import("react-player"), { ssr: false });
 
@@ -281,13 +282,14 @@ export default function Chat() {
               >
                 🎙️
               </button> */}
-              <button onClick={() => {}}
+              {/* <button onClick={() => {}}
                 type="button"
                 className="h-10 w-10 rounded-full bg-[var(--primary-light)] text-xl ring-1 ring-[var(--primary)]"
                 title="Toggle microphone"
               >
                 🎙️
-              </button>
+              </button> */}
+              <MicButton />
               <textarea
                 value={text}
                 onChange={(e) => setText(e.target.value)}

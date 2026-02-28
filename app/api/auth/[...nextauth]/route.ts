@@ -12,7 +12,7 @@ export const authOptions = {
   // adapter: PrismaAdapter(prisma),
 
   session: {
-    strategy: "database" as SessionStrategy,
+    strategy: "jwt" as SessionStrategy,
   },
 
   providers: [],

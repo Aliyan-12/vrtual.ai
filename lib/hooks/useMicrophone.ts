@@ -1,6 +1,11 @@
 import { useState, useRef, useCallback } from "react";
 import { GoogleGenAI, Modality, Session } from "@google/genai";
 
+export type VoiceTranscript = {
+  role: "user" | "assistant";
+  text: string;
+};
+
 const PCM_WORKLET_CODE = `
 class PcmProcessor extends AudioWorkletProcessor {
   process(inputs) {
@@ -23,6 +28,7 @@ registerProcessor("pcm-processor", PcmProcessor);
 export function useMicrophone() {
   const [connected, setConnected] = useState(false);
   const [recording, setRecording] = useState(false);
+  const [transcripts, setTranscripts] = useState<VoiceTranscript[]>([]);
 
   const sessionRef = useRef<Session | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
@@ -66,6 +72,20 @@ export function useMicrophone() {
     playbackTimeRef.current = startTime + audioBuffer.duration;
   }
 
+  function appendTranscript(role: "user" | "assistant", text: string) {
+    setTranscripts(prev => {
+      if (prev.length > 0 && prev[prev.length - 1].role === role) {
+        const updated = [...prev];
+        updated[updated.length - 1] = {
+          role,
+          text: updated[updated.length - 1].text + text,
+        };
+        return updated;
+      }
+      return [...prev, { role, text }];
+    });
+  }
+
   const connect = useCallback(async () => {
     if (sessionRef.current) return sessionRef.current;
 
@@ -82,6 +102,8 @@ export function useMicrophone() {
             prebuiltVoiceConfig: { voiceName: "Zephyr" },
           },
         },
+        inputAudioTranscription: {},
+        outputAudioTranscription: {},
       },
       callbacks: {
         onopen: () => {
@@ -94,6 +116,14 @@ export function useMicrophone() {
                 playPcmChunk(part.inlineData.data);
               }
             }
+          }
+
+          if (msg.serverContent?.inputTranscription?.text) {
+            appendTranscript("user", msg.serverContent.inputTranscription.text);
+          }
+
+          if (msg.serverContent?.outputTranscription?.text) {
+            appendTranscript("assistant", msg.serverContent.outputTranscription.text);
           }
 
           if (msg.serverContent?.interrupted) {
@@ -203,5 +233,5 @@ export function useMicrophone() {
     setConnected(false);
   }
 
-  return { connect, startRecording, stopRecording, disconnect, recording, connected };
+  return { connect, startRecording, stopRecording, disconnect, recording, connected, transcripts };
 }

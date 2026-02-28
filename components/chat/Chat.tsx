@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { useChat } from '@ai-sdk/react';
+import { useMicrophone } from '@/lib/hooks/useMicrophone';
 import MicButton from '@/components/buttons/MicButton';
 
 const ReactPlayer = dynamic(() => import("react-player"), { ssr: false });
@@ -40,6 +41,15 @@ export default function Chat() {
     }
   });
 
+  const {
+    connect,
+    startRecording,
+    stopRecording,
+    connected,
+    recording,
+    transcripts,
+  } = useMicrophone();
+
   const [text, setText] = useState("");
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const [likedVideos, setLikedVideos] = useState<Set<string>>(new Set());
@@ -55,7 +65,7 @@ export default function Chat() {
     const interval = setInterval(() => {
       idx = (idx + 1) % THINKING_WORDS.length;
       setThinkingWord(THINKING_WORDS[idx]);
-    }, 600);
+    }, 1000);
     return () => clearInterval(interval);
   }, [isThinking]);
 
@@ -88,10 +98,16 @@ export default function Chat() {
     setText("");
   }
 
+  async function handleMicToggle() {
+    if (!connected) await connect();
+    if (recording) stopRecording();
+    else startRecording();
+  }
+
   useEffect(() => {
     if (!scrollRef.current) return;
     scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-  }, [messages, isThinking]);
+  }, [messages, isThinking, transcripts]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[var(--primary-light)] via-[var(--white)] to-[var(--white)] text-[var(--text-dark)]">
@@ -100,7 +116,7 @@ export default function Chat() {
           ref={scrollRef}
           className="flex-1 overflow-y-auto pb-20"
         >
-          {messages.length === 0 && (
+          {messages.length === 0 && transcripts.length === 0 && (
             <div className="flex flex-col items-center justify-center h-full py-16">
               <h2 className="text-2xl font-semibold text-[var(--text-dark)] mb-2">
                 Hey, how are you feeling today?
@@ -219,6 +235,36 @@ export default function Chat() {
               </div>
             </div>
           )}
+
+          {transcripts.length > 0 && (
+            <div className="mt-6 border-t border-black/5 pt-4">
+              <div className="flex items-center gap-2 mb-3">
+                <span className="h-2 w-2 rounded-full bg-red-500 animate-pulse" />
+                <span className="text-xs font-medium text-[var(--text-muted)] uppercase tracking-wide">
+                  Voice Conversation
+                </span>
+              </div>
+              {transcripts.map((t, idx) => (
+                <div
+                  key={idx}
+                  className={t.role === "user" ? "mb-3 text-right" : "mb-3"}
+                >
+                  <div
+                    className={
+                      t.role === "user"
+                        ? "inline-block max-w-[72ch] rounded-2xl bg-[var(--primary-light)] px-4 py-2 text-[var(--text-dark)] ring-1 ring-[var(--primary)]"
+                        : "inline-block max-w-[72ch] rounded-2xl bg-[var(--white)] px-4 py-2 text-[var(--text-dark)] ring-1 ring-black/10"
+                    }
+                  >
+                    <div className="text-[10px] font-medium text-[var(--text-muted)] mb-0.5">
+                      {t.role === "user" ? "You (voice)" : "Dr. Erik (voice)"}
+                    </div>
+                    <div className="text-sm">{t.text}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="sticky bottom-0">
@@ -230,7 +276,7 @@ export default function Chat() {
               }}
               className="flex items-end gap-3"
             >
-              <MicButton />
+              <MicButton recording={recording} onToggle={handleMicToggle} />
               <textarea
                 value={text}
                 onChange={(e) => setText(e.target.value)}

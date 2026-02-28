@@ -1,23 +1,34 @@
 'use client';
-import 'dotenv/config';
 import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { useChat } from '@ai-sdk/react';
-import { convertTextToSpeech } from '@/lib/utils/helper';
 import MicButton from '@/components/buttons/MicButton';
 
 const ReactPlayer = dynamic(() => import("react-player"), { ssr: false });
 
+const THINKING_WORDS = [
+  "listening", "feeling", "reflecting", "understanding",
+  "empathizing", "connecting", "processing", "sensing",
+  "considering", "absorbing", "analyzing", "composing",
+];
+
+const MOOD_ICONS = ["💬", "🩹", "🌊", "🤝"];
+const MOOD_STYLES = [
+  { color: "from-blue-50 to-indigo-50", border: "border-blue-200 hover:border-blue-400" },
+  { color: "from-rose-50 to-pink-50", border: "border-rose-200 hover:border-rose-400" },
+  { color: "from-amber-50 to-yellow-50", border: "border-amber-200 hover:border-amber-400" },
+  { color: "from-emerald-50 to-teal-50", border: "border-emerald-200 hover:border-emerald-400" },
+];
+
 export default function Chat() {
-  const { messages, sendMessage } = useChat({
-    onFinish: async (response) => {
+  const { messages, sendMessage, status } = useChat({
+    onFinish: async () => {
       try {
         const cookieValue = document.cookie
           .split("; ")
           .find(row => row.startsWith("audio_file="))
           ?.split("=")[1];
 
-        console.log(cookieValue);
         if (cookieValue) {
           const decoded = decodeURIComponent(cookieValue);
           const audio = new Audio(`/generated/${decoded}`);
@@ -28,174 +39,59 @@ export default function Chat() {
       }
     }
   });
-  
+
   const [text, setText] = useState("");
   const scrollRef = useRef<HTMLDivElement | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [likedVideos, setLikedVideos] = useState<Set<string>>(new Set());
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [loadingSuggestions, setLoadingSuggestions] = useState(true);
+  const [thinkingWord, setThinkingWord] = useState(THINKING_WORDS[0]);
 
-  function pcmToWav(pcmData: Uint8Array, sampleRate = 24000, numChannels = 1) {
-    const blockAlign = numChannels * 2;
-    const byteRate = sampleRate * blockAlign;
-    const wavBuffer = new ArrayBuffer(44 + pcmData.length);
-    const view = new DataView(wavBuffer);
+  const isThinking = status === "submitted" || (status === "streaming" && messages.length > 0 && messages[messages.length - 1].role === "user");
 
-    // RIFF header
-    writeString(view, 0, "RIFF");
-    view.setUint32(4, 36 + pcmData.length, true);
-    writeString(view, 8, "WAVE");
+  useEffect(() => {
+    if (!isThinking) return;
+    let idx = 0;
+    const interval = setInterval(() => {
+      idx = (idx + 1) % THINKING_WORDS.length;
+      setThinkingWord(THINKING_WORDS[idx]);
+    }, 600);
+    return () => clearInterval(interval);
+  }, [isThinking]);
 
-    // fmt chunk
-    writeString(view, 12, "fmt ");
-    view.setUint32(16, 16, true); // chunk size
-    view.setUint16(20, 1, true); // PCM
-    view.setUint16(22, numChannels, true);
-    view.setUint32(24, sampleRate, true);
-    view.setUint32(28, byteRate, true);
-    view.setUint16(32, blockAlign, true);
-    view.setUint16(34, 16, true); // 16-bit samples
+  useEffect(() => {
+    fetch("/api/suggestions")
+      .then(res => res.json())
+      .then(data => setSuggestions(data))
+      .catch(() => setSuggestions([
+        "I'm feeling bored and want some good discussions",
+        "I'm dealing with health issues and my mood is really low",
+        "I feel stressed and anxious about life lately",
+        "I just need someone to talk to and feel less alone",
+      ]))
+      .finally(() => setLoadingSuggestions(false));
+  }, []);
 
-    // data chunk
-    writeString(view, 36, "data");
-    view.setUint32(40, pcmData.length, true);
-
-    // PCM samples
-    new Uint8Array(wavBuffer, 44).set(pcmData);
-
-    return new Blob([wavBuffer], { type: "audio/wav" });
-  }
-
-  function writeString(view: any, offset: any, str: any) {
-    for (let i = 0; i < str.length; i++) {
-      view.setUint8(offset + i, str.charCodeAt(i));
-    }
-  }
-
-  function swap16(pcm: any) {
-    const out = new Uint8Array(pcm.length);
-    for (let i = 0; i < pcm.length; i += 2) {
-      out[i] = pcm[i + 1];
-      out[i + 1] = pcm[i];
-    }
-    return out;
-  }
-
-  async function speak(text: string) {
-    setLoading(true);
-
-    const res = await fetch("/api/voice", {
-      method: "POST",
-      body: JSON.stringify({ text }),
+  function toggleLike(videoId: string) {
+    setLikedVideos(prev => {
+      const next = new Set(prev);
+      if (next.has(videoId)) next.delete(videoId);
+      else next.add(videoId);
+      return next;
     });
-    
-    const data = await res.json();
-
-    console.log(data.filename);
-
-    const audio = new Audio(`/${data.filename}.${data.mimeType}`);
-    audio.play();
-
-    const reader = res.body!.getReader();
-    // console.log(await reader.read());
-    const decoder = new TextDecoder();
-
-    let buffer: Uint8Array[] = [];
-
-    while (true) {
-      const { value, done } = await reader.read();
-      // console.log(value);
-      if (done) break;
-    
-      // const swapped = swap16(value);  // FIX FOR DISTORTION
-      // const wavBlob = pcmToWav(swapped, 24000, 1);
-      // const url = URL.createObjectURL(wavBlob);
-
-      // console.log(wavBlob);
-      // console.log(url);
-
-      // const audio = new Audio(url);
-      // audio.play();
-    }
-
-    setLoading(false);
   }
 
-  async function send() {
-    const t = text.trim();
+  function send(override?: string) {
+    const t = (override || text).trim();
     if (!t) return;
     sendMessage({ text: t });
     setText("");
   }
 
-  async function handleSendMessage() {
-    if (!text.trim()) return;
-    
-    setLoading(true);
-    
-    try {
-      const response = await fetch('/api/chat', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ 
-          messages: [...messages, { role: 'user', content: text }]
-        }),
-      });
-      
-      // Get headers from the response
-      const audioFile = response.headers.get("x-audio-file");
-      const audioMime = response.headers.get("x-audio-mime");
-      
-      if (audioFile && audioMime) {
-        console.log("Headers received:", { audioFile, audioMime });
-        
-        // Store for later use
-        
-        // Play the audio if needed
-        const audio = new Audio(`/${audioFile}`);
-        audio.play();
-      }
-      
-      // Process the stream
-      if (!response.body) throw new Error('No response body');
-      
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let content = '';
-      
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        
-        const chunk = decoder.decode(value);
-        const lines = chunk.split('\n');
-        
-        for (const line of lines) {
-          if (line.startsWith('data:')) {
-            try {
-              const data = JSON.parse(line.slice(5));
-              if (data.type === 'text-delta') {
-                content += data.textDelta;
-                // Update UI with streaming text
-              }
-            } catch (e) {
-              // Ignore parse errors
-            }
-          }
-        }
-      }    
-    } catch (error) {
-      console.error('Error sending message:', error);
-    } finally {
-      setLoading(false);
-      setText('');
-    }
-  }
-
   useEffect(() => {
     if (!scrollRef.current) return;
     scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-  }, [messages]);
+  }, [messages, isThinking]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[var(--primary-light)] via-[var(--white)] to-[var(--white)] text-[var(--text-dark)]">
@@ -204,24 +100,58 @@ export default function Chat() {
           ref={scrollRef}
           className="flex-1 overflow-y-auto pb-20"
         >
+          {messages.length === 0 && (
+            <div className="flex flex-col items-center justify-center h-full py-16">
+              <h2 className="text-2xl font-semibold text-[var(--text-dark)] mb-2">
+                Hey, how are you feeling today?
+              </h2>
+              <p className="text-[var(--text-muted)] mb-8 text-sm">
+                Pick something that matches your mood, or type your own message below.
+              </p>
+              {loadingSuggestions ? (
+                <div className="flex items-center gap-2 text-sm text-[var(--text-muted)]">
+                  <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-[var(--primary)] border-t-transparent" />
+                  Generating suggestions...
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full max-w-lg">
+                  {suggestions.map((label, idx) => {
+                    const style = MOOD_STYLES[idx % MOOD_STYLES.length];
+                    const icon = MOOD_ICONS[idx % MOOD_ICONS.length];
+                    return (
+                      <button
+                        key={idx}
+                        onClick={() => send(label)}
+                        className={`flex items-start gap-3 rounded-2xl border bg-gradient-to-br ${style.color} ${style.border} px-4 py-4 text-left text-sm text-[var(--text-dark)] transition-all duration-200 hover:shadow-md hover:-translate-y-0.5 cursor-pointer`}
+                      >
+                        <span className="text-xl mt-0.5 shrink-0">{icon}</span>
+                        <span className="leading-snug">{label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
           {messages.map(message => (
             <div
               key={message.id}
               className={
                 message.role === "user"
                   ? "mb-4 text-right"
-                : message.role === "assistant"
-                  ? "mb-4"
-                  : "mb-4 text-center text-xs text-[var(--text-muted)]"
+                  : message.role === "assistant"
+                    ? "mb-4"
+                    : "mb-4 text-center text-xs text-[var(--text-muted)]"
               }
             >
               <div
                 className={
                   message.role === "user"
                     ? "inline-block max-w-[72ch] rounded-2xl bg-[var(--primary-light)] px-4 py-2 text-[var(--text-dark)] ring-1 ring-[var(--primary)]"
-                  : message.role === "assistant"
-                    ? "inline-block max-w-[72ch] rounded-2xl bg-[var(--white)] px-4 py-2 text-[var(--text-dark)] ring-1 ring-black/10"
-                    : ""
+                    : message.role === "assistant"
+                      ? "inline-block max-w-[72ch] rounded-2xl bg-[var(--white)] px-4 py-2 text-[var(--text-dark)] ring-1 ring-black/10"
+                      : ""
                 }
               >
                 {message.parts.map((part, i) => {
@@ -230,15 +160,42 @@ export default function Chat() {
                   }
                   if (part.type === 'tool-fetchVideos' && Array.isArray(part.output)) {
                     return part.output?.map((video: { id: string, url: string, title?: string, description?: string, thumbnail?: string, selectedSection?: { startSeconds: number, reason: string }, startUrl?: string, embedUrl?: string }, j: number) => {
-                      return video.embedUrl ? (
-                        <div key={`${message.id}-${i}-${j}`} className="my-3 overflow-hidden rounded-xl">
-                          <iframe width={'100%'} height={'200px'} src={video.embedUrl} ></iframe>
-                          <div key={`${message.id}-${i}-${j}`} className="mt-1 text-sm text-[var(--text-muted)]">{video.title}</div>
-                        </div>
-                      ) : (
-                        <div key={`${message.id}-${i}-${j}`} className="my-3 overflow-hidden rounded-xl">
-                          <ReactPlayer src={video.url} width="100%" height="200px" controls />
-                          <div key={`${message.id}-${i}-${j}`} className="mt-1 text-sm text-[var(--text-muted)]">{video.title}</div>
+                      const videoKey = `${video.id}-${j}`;
+                      const liked = likedVideos.has(videoKey);
+
+                      return (
+                        <div key={`${message.id}-${i}-${j}`} className="my-3 flex items-start gap-2">
+                          <div className="flex-1 overflow-hidden rounded-xl">
+                            {video.embedUrl ? (
+                              <iframe width="100%" height="200px" src={video.embedUrl} />
+                            ) : (
+                              <ReactPlayer src={video.url} width="100%" height="200px" controls />
+                            )}
+                            <div className="mt-1 text-sm text-[var(--text-muted)]">{video.title}</div>
+                          </div>
+                          <button
+                            onClick={() => toggleLike(videoKey)}
+                            className={`mt-2 shrink-0 flex items-center justify-center w-9 h-9 rounded-full border transition-all duration-200 cursor-pointer ${
+                              liked
+                                ? "bg-red-50 border-red-300 text-red-500 scale-110"
+                                : "bg-white border-black/10 text-[var(--text-muted)] hover:border-red-300 hover:text-red-400"
+                            }`}
+                          >
+                            <svg
+                              xmlns="http://www.w3.org/2000/svg"
+                              viewBox="0 0 24 24"
+                              fill={liked ? "currentColor" : "none"}
+                              stroke="currentColor"
+                              strokeWidth={2}
+                              className="w-4 h-4"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z"
+                              />
+                            </svg>
+                          </button>
                         </div>
                       );
                     });
@@ -247,10 +204,25 @@ export default function Chat() {
               </div>
             </div>
           ))}
+
+          {isThinking && (
+            <div className="mb-4">
+              <div className="inline-flex items-center gap-2 rounded-2xl bg-[var(--white)] px-4 py-3 ring-1 ring-black/10">
+                <span className="flex gap-1">
+                  <span className="h-2 w-2 rounded-full bg-[var(--primary)] animate-bounce [animation-delay:0ms]" />
+                  <span className="h-2 w-2 rounded-full bg-[var(--primary)] animate-bounce [animation-delay:150ms]" />
+                  <span className="h-2 w-2 rounded-full bg-[var(--primary)] animate-bounce [animation-delay:300ms]" />
+                </span>
+                <span className="text-sm text-[var(--text-muted)] italic min-w-[90px] transition-all duration-300">
+                  {thinkingWord}...
+                </span>
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="sticky bottom-0">
-          <div className=" pb-4 pt-2">
+          <div className="pb-4 pt-2">
             <form
               onSubmit={(e) => {
                 e.preventDefault();
@@ -258,37 +230,6 @@ export default function Chat() {
               }}
               className="flex items-end gap-3"
             >
-              {/* <button onClick={async () => {
-                  if (!text.trim()) return;
-
-                  const res = await fetch("/api/voice", {
-                    method: "POST",
-                    headers: {
-                      "Content-Type": "application/json",
-                    },
-                    body: JSON.stringify({ text }),
-                  });
-
-                  const data = await res.json();
-                  if (!data) return;
-
-                  const url = URL.createObjectURL(data.audio);
-                  const audioPlayer = new Audio(url);
-                  audioPlayer.play();
-                }}
-                type="button"
-                className="h-10 w-10 rounded-full bg-[var(--primary-light)] text-xl ring-1 ring-[var(--primary)]"
-                title="Toggle microphone"
-              >
-                🎙️
-              </button> */}
-              {/* <button onClick={() => {}}
-                type="button"
-                className="h-10 w-10 rounded-full bg-[var(--primary-light)] text-xl ring-1 ring-[var(--primary)]"
-                title="Toggle microphone"
-              >
-                🎙️
-              </button> */}
               <MicButton />
               <textarea
                 value={text}

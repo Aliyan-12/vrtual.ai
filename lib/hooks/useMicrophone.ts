@@ -1,13 +1,12 @@
 import { useState, useRef, useCallback } from "react";
 import { GoogleGenAI, Modality, Session } from "@google/genai";
 
-// AudioWorklet processor code — captures raw 16-bit PCM at 16kHz mono
 const PCM_WORKLET_CODE = `
 class PcmProcessor extends AudioWorkletProcessor {
   process(inputs) {
     const input = inputs[0];
     if (input.length > 0) {
-      const float32 = input[0]; // mono channel
+      const float32 = input[0];
       const int16 = new Int16Array(float32.length);
       for (let i = 0; i < float32.length; i++) {
         const s = Math.max(-1, Math.min(1, float32[i]));
@@ -30,8 +29,6 @@ export function useMicrophone() {
   const workletNodeRef = useRef<AudioWorkletNode | null>(null);
   const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
-
-  // Playback: queue PCM chunks and play via AudioContext
   const playbackCtxRef = useRef<AudioContext | null>(null);
   const playbackTimeRef = useRef(0);
 
@@ -50,7 +47,6 @@ export function useMicrophone() {
       bytes[i] = raw.charCodeAt(i);
     }
 
-    // Convert 16-bit LE PCM to Float32
     const int16 = new Int16Array(bytes.buffer);
     const float32 = new Float32Array(int16.length);
     for (let i = 0; i < int16.length; i++) {
@@ -64,7 +60,6 @@ export function useMicrophone() {
     source.buffer = audioBuffer;
     source.connect(ctx.destination);
 
-    // Schedule chunks back-to-back for gapless playback
     const now = ctx.currentTime;
     const startTime = Math.max(now, playbackTimeRef.current);
     source.start(startTime);
@@ -91,10 +86,8 @@ export function useMicrophone() {
       callbacks: {
         onopen: () => {
           setConnected(true);
-          console.log("Live session opened");
         },
         onmessage: (msg: any) => {
-          // Handle audio response chunks
           if (msg.serverContent?.modelTurn?.parts) {
             for (const part of msg.serverContent.modelTurn.parts) {
               if (part.inlineData?.data) {
@@ -104,15 +97,13 @@ export function useMicrophone() {
           }
 
           if (msg.serverContent?.interrupted) {
-            // Model was interrupted, reset playback queue
             playbackTimeRef.current = 0;
           }
         },
         onerror: (err: any) => {
           console.error("Live session error:", err.message || err);
         },
-        onclose: (e: any) => {
-          console.log("Live session closed:", e?.reason || "");
+        onclose: () => {
           setConnected(false);
           setRecording(false);
           sessionRef.current = null;
@@ -139,17 +130,14 @@ export function useMicrophone() {
       });
       streamRef.current = micStream;
 
-      // Create AudioContext at 16kHz for mic capture
       const audioCtx = new AudioContext({ sampleRate: 16000 });
       audioCtxRef.current = audioCtx;
 
-      // Register the PCM worklet processor
       const blob = new Blob([PCM_WORKLET_CODE], { type: "application/javascript" });
       const workletUrl = URL.createObjectURL(blob);
       await audioCtx.audioWorklet.addModule(workletUrl);
       URL.revokeObjectURL(workletUrl);
 
-      // Connect mic -> worklet
       const source = audioCtx.createMediaStreamSource(micStream);
       sourceRef.current = source;
 
@@ -160,14 +148,12 @@ export function useMicrophone() {
         const pcmBuffer: ArrayBuffer = e.data;
         const bytes = new Uint8Array(pcmBuffer);
 
-        // Convert to base64
         let binary = "";
         for (let i = 0; i < bytes.length; i++) {
           binary += String.fromCharCode(bytes[i]);
         }
         const base64 = btoa(binary);
 
-        // Send raw PCM to Gemini Live API
         session.sendRealtimeInput({
           audio: {
             data: base64,
@@ -177,7 +163,7 @@ export function useMicrophone() {
       };
 
       source.connect(workletNode);
-      workletNode.connect(audioCtx.destination); // needed to keep worklet running
+      workletNode.connect(audioCtx.destination);
 
       setRecording(true);
     } catch (err) {
@@ -186,7 +172,6 @@ export function useMicrophone() {
   }
 
   function stopRecording() {
-    // Disconnect worklet
     if (workletNodeRef.current) {
       workletNodeRef.current.disconnect();
       workletNodeRef.current = null;
@@ -196,13 +181,11 @@ export function useMicrophone() {
       sourceRef.current = null;
     }
 
-    // Stop mic tracks
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((t) => t.stop());
       streamRef.current = null;
     }
 
-    // Close capture AudioContext
     if (audioCtxRef.current) {
       audioCtxRef.current.close();
       audioCtxRef.current = null;

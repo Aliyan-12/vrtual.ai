@@ -46,6 +46,7 @@ export function useMicrophone() {
   const streamRef = useRef<MediaStream | null>(null);
   const playbackCtxRef = useRef<AudioContext | null>(null);
   const playbackTimeRef = useRef(0);
+  const connectingRef = useRef(false);
 
   function getPlaybackCtx() {
     if (!playbackCtxRef.current) {
@@ -127,96 +128,133 @@ export function useMicrophone() {
     }
 
     if (responses.length > 0) {
-      session.sendToolResponse({ functionResponses: responses });
+      try {
+        session.sendToolResponse({ functionResponses: responses });
+      } catch {
+        // session already closed
+      }
     }
   }
 
   const connect = useCallback(async () => {
     if (sessionRef.current) return sessionRef.current;
+    if (connectingRef.current) return null;
+    connectingRef.current = true;
 
-    const ai = new GoogleGenAI({
-      apiKey: process.env.NEXT_PUBLIC_GOOGLE_GENERATIVE_AI_API_KEY!,
-    });
+    try {
+      const ai = new GoogleGenAI({
+        apiKey: process.env.NEXT_PUBLIC_GOOGLE_GENERATIVE_AI_API_KEY!,
+      });
 
-    const session = await ai.live.connect({
-      model: "gemini-2.0-flash-live-001",
-      config: {
-        responseModalities: [Modality.AUDIO],
-        speechConfig: {
-          voiceConfig: {
-            prebuiltVoiceConfig: { voiceName: "Zephyr" },
-          },
-        },
-        systemInstruction: SYSTEM_PROMPT,
-        inputAudioTranscription: {},
-        outputAudioTranscription: {},
-        tools: [{
-          functionDeclarations: [{
-            name: "fetchVideos",
-            description: FETCH_VIDEOS_DESCRIPTION,
-            parameters: {
-              type: Type.OBJECT,
-              properties: {
-                query: {
-                  type: Type.STRING,
-                  description: "Search query for Erik Fisher channel",
-                },
-                userContext: {
-                  type: Type.STRING,
-                  description: "User's emotional context based on conversation so far",
-                },
-              },
-              required: ["query", "userContext"],
+      const session = await ai.live.connect({
+        model: "gemini-2.0-flash-live-001",
+        config: {
+          responseModalities: [Modality.AUDIO],
+          speechConfig: {
+            voiceConfig: {
+              prebuiltVoiceConfig: { voiceName: "Zephyr" },
             },
+          },
+          systemInstruction: SYSTEM_PROMPT,
+          inputAudioTranscription: {},
+          outputAudioTranscription: {},
+          tools: [{
+            functionDeclarations: [{
+              name: "fetchVideos",
+              description: FETCH_VIDEOS_DESCRIPTION,
+              parameters: {
+                type: Type.OBJECT,
+                properties: {
+                  query: {
+                    type: Type.STRING,
+                    description: "Search query for Erik Fisher channel",
+                  },
+                  userContext: {
+                    type: Type.STRING,
+                    description: "User's emotional context based on conversation so far",
+                  },
+                },
+                required: ["query", "userContext"],
+              },
+            }],
           }],
-        }],
-      },
-      callbacks: {
-        onopen: () => {
-          setConnected(true);
         },
-        onmessage: (msg: any) => {
-          if (msg.serverContent?.modelTurn?.parts) {
-            for (const part of msg.serverContent.modelTurn.parts) {
-              if (part.inlineData?.data) {
-                playPcmChunk(part.inlineData.data);
+        callbacks: {
+          onopen: () => {
+            setConnected(true);
+          },
+          onmessage: (msg: any) => {
+            if (msg.serverContent?.modelTurn?.parts) {
+              for (const part of msg.serverContent.modelTurn.parts) {
+                if (part.inlineData?.data) {
+                  playPcmChunk(part.inlineData.data);
+                }
               }
             }
-          }
 
-          if (msg.serverContent?.inputTranscription?.text) {
-            appendTranscript("user", msg.serverContent.inputTranscription.text);
-          }
+            if (msg.serverContent?.inputTranscription?.text) {
+              appendTranscript("user", msg.serverContent.inputTranscription.text);
+            }
 
-          if (msg.serverContent?.outputTranscription?.text) {
-            appendTranscript("assistant", msg.serverContent.outputTranscription.text);
-          }
+            if (msg.serverContent?.outputTranscription?.text) {
+              appendTranscript("assistant", msg.serverContent.outputTranscription.text);
+            }
 
-          if (msg.serverContent?.interrupted) {
-            playbackTimeRef.current = 0;
-          }
+            if (msg.serverContent?.interrupted) {
+              playbackTimeRef.current = 0;
+            }
 
-          if (msg.toolCall?.functionCalls) {
-            handleToolCall(sessionRef.current!, msg.toolCall.functionCalls);
-          }
+            if (msg.toolCall?.functionCalls && sessionRef.current) {
+              handleToolCall(sessionRef.current, msg.toolCall.functionCalls);
+            }
+          },
+          onerror: (err: any) => {
+            console.error("Live session error:", err.message || err);
+          },
+          onclose: () => {
+            setConnected(false);
+            setRecording(false);
+            sessionRef.current = null;
+            cleanupMic();
+          },
         },
-        onerror: (err: any) => {
-          console.error("Live session error:", err.message || err);
-        },
-        onclose: () => {
-          setConnected(false);
-          setRecording(false);
-          sessionRef.current = null;
-        },
-      },
-    });
+      });
 
-    sessionRef.current = session;
-    return session;
+      sessionRef.current = session;
+      return session;
+    } catch (err) {
+      console.error("Failed to connect:", err);
+      return null;
+    } finally {
+      connectingRef.current = false;
+    }
   }, []);
 
+  function cleanupMic() {
+    if (workletNodeRef.current) {
+      workletNodeRef.current.port.onmessage = null;
+      workletNodeRef.current.disconnect();
+      workletNodeRef.current = null;
+    }
+    if (sourceRef.current) {
+      sourceRef.current.disconnect();
+      sourceRef.current = null;
+    }
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+    }
+    if (audioCtxRef.current) {
+      audioCtxRef.current.close();
+      audioCtxRef.current = null;
+    }
+  }
+
   async function startRecording() {
-    const session = sessionRef.current || (await connect());
+    let session = sessionRef.current;
+    if (!session) {
+      session = await connect();
+    }
     if (!session) return;
 
     try {
@@ -245,6 +283,7 @@ export function useMicrophone() {
       workletNodeRef.current = workletNode;
 
       workletNode.port.onmessage = (e: MessageEvent) => {
+        if (!sessionRef.current) return;
         const pcmBuffer: ArrayBuffer = e.data;
         const bytes = new Uint8Array(pcmBuffer);
 
@@ -254,12 +293,16 @@ export function useMicrophone() {
         }
         const base64 = btoa(binary);
 
-        session.sendRealtimeInput({
-          audio: {
-            data: base64,
-            mimeType: "audio/pcm;rate=16000",
-          },
-        });
+        try {
+          sessionRef.current.sendRealtimeInput({
+            audio: {
+              data: base64,
+              mimeType: "audio/pcm;rate=16000",
+            },
+          });
+        } catch {
+          // session closed, ignore
+        }
       };
 
       source.connect(workletNode);
@@ -272,35 +315,26 @@ export function useMicrophone() {
   }
 
   function stopRecording() {
-    if (workletNodeRef.current) {
-      workletNodeRef.current.disconnect();
-      workletNodeRef.current = null;
-    }
-    if (sourceRef.current) {
-      sourceRef.current.disconnect();
-      sourceRef.current = null;
-    }
-
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((t) => t.stop());
-      streamRef.current = null;
-    }
-
-    if (audioCtxRef.current) {
-      audioCtxRef.current.close();
-      audioCtxRef.current = null;
-    }
-
+    cleanupMic();
     setRecording(false);
   }
 
   function disconnect() {
     stopRecording();
     if (sessionRef.current) {
-      sessionRef.current.close();
+      try {
+        sessionRef.current.close();
+      } catch {
+        // already closed
+      }
       sessionRef.current = null;
     }
     setConnected(false);
+    if (playbackCtxRef.current) {
+      playbackCtxRef.current.close();
+      playbackCtxRef.current = null;
+    }
+    playbackTimeRef.current = 0;
   }
 
   return { connect, startRecording, stopRecording, disconnect, recording, connected, transcripts, videos };

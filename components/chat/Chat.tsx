@@ -135,9 +135,11 @@ export default function Chat() {
   }
 
   async function handleMicToggle() {
-    if (!connected) await connect();
-    if (recording) stopRecording();
-    else startRecording();
+    if (recording) {
+      stopRecording();
+    } else {
+      await startRecording();
+    }
   }
 
   useEffect(() => {

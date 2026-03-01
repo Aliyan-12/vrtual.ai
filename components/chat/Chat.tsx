@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { useChat } from '@ai-sdk/react';
-import { useMicrophone } from '@/lib/hooks/useMicrophone';
+import { useMicrophone, VoiceVideo } from '@/lib/hooks/useMicrophone';
 import MicButton from '@/components/buttons/MicButton';
 
 const ReactPlayer = dynamic(() => import("react-player"), { ssr: false });
@@ -20,6 +20,11 @@ const MOOD_STYLES = [
   { color: "from-amber-50 to-yellow-50", border: "border-amber-200 hover:border-amber-400" },
   { color: "from-emerald-50 to-teal-50", border: "border-emerald-200 hover:border-emerald-400" },
 ];
+
+type TimelineItem =
+  | { type: "message"; id: string }
+  | { type: "transcript"; idx: number }
+  | { type: "video"; idx: number };
 
 export default function Chat() {
   const { messages, sendMessage, status } = useChat({
@@ -57,6 +62,36 @@ export default function Chat() {
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [loadingSuggestions, setLoadingSuggestions] = useState(true);
   const [thinkingWord, setThinkingWord] = useState(THINKING_WORDS[0]);
+
+  const [timeline, setTimeline] = useState<TimelineItem[]>([]);
+  const addedMessageIds = useRef(new Set<string>());
+  const addedTranscriptCount = useRef(0);
+  const addedVideoCount = useRef(0);
+
+  useEffect(() => {
+    const newItems: TimelineItem[] = [];
+
+    for (const msg of messages) {
+      if (!addedMessageIds.current.has(msg.id)) {
+        addedMessageIds.current.add(msg.id);
+        newItems.push({ type: "message", id: msg.id });
+      }
+    }
+
+    for (let i = addedTranscriptCount.current; i < transcripts.length; i++) {
+      newItems.push({ type: "transcript", idx: i });
+      addedTranscriptCount.current = i + 1;
+    }
+
+    for (let i = addedVideoCount.current; i < voiceVideos.length; i++) {
+      newItems.push({ type: "video", idx: i });
+      addedVideoCount.current = i + 1;
+    }
+
+    if (newItems.length > 0) {
+      setTimeline(prev => [...prev, ...newItems]);
+    }
+  }, [messages, transcripts, voiceVideos]);
 
   const isThinking = status === "submitted" || (status === "streaming" && messages.length > 0 && messages[messages.length - 1].role === "user");
 
@@ -108,7 +143,123 @@ export default function Chat() {
   useEffect(() => {
     if (!scrollRef.current) return;
     scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-  }, [messages, isThinking, transcripts, voiceVideos]);
+  }, [timeline, isThinking]);
+
+  function renderTextMessage(message: typeof messages[number]) {
+    return (
+      <div
+        key={message.id}
+        className={
+          message.role === "user"
+            ? "mb-4 text-right"
+            : message.role === "assistant"
+              ? "mb-4"
+              : "mb-4 text-center text-xs text-[var(--text-muted)]"
+        }
+      >
+        <div
+          className={
+            message.role === "user"
+              ? "inline-block max-w-[72ch] rounded-2xl bg-[var(--primary-light)] px-4 py-2 text-[var(--text-dark)] ring-1 ring-[var(--primary)]"
+              : message.role === "assistant"
+                ? "inline-block max-w-[72ch] rounded-2xl bg-[var(--white)] px-4 py-2 text-[var(--text-dark)] ring-1 ring-black/10"
+                : ""
+          }
+        >
+          {message.parts.map((part, i) => {
+            if (part.type === 'text') {
+              return <div key={`${message.id}-${i}`} dangerouslySetInnerHTML={{ __html: part.text }} />;
+            }
+            if (part.type === 'tool-fetchVideos' && Array.isArray(part.output)) {
+              return part.output?.map((video: { id: string, url: string, title?: string, description?: string, thumbnail?: string, selectedSection?: { startSeconds: number, reason: string }, startUrl?: string, embedUrl?: string }, j: number) => {
+                const videoKey = `${video.id}-${j}`;
+                const liked = likedVideos.has(videoKey);
+                return renderVideoEmbed(videoKey, video, liked);
+              });
+            }
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  function renderTranscript(idx: number) {
+    const t = transcripts[idx];
+    if (!t) return null;
+    return (
+      <div
+        key={`transcript-${idx}`}
+        className={t.role === "user" ? "mb-3 text-right" : "mb-3"}
+      >
+        <div
+          className={
+            t.role === "user"
+              ? "inline-block max-w-[72ch] rounded-2xl bg-[var(--primary-light)] px-4 py-2 text-[var(--text-dark)] ring-1 ring-[var(--primary)]"
+              : "inline-block max-w-[72ch] rounded-2xl bg-[var(--white)] px-4 py-2 text-[var(--text-dark)] ring-1 ring-black/10"
+          }
+        >
+          <div className="text-[10px] font-medium text-[var(--text-muted)] mb-0.5">
+            {t.role === "user" ? "You (voice)" : "Dr. Erik (voice)"}
+          </div>
+          <div className="text-sm">{t.text}</div>
+        </div>
+      </div>
+    );
+  }
+
+  function renderVoiceVideo(idx: number) {
+    const video = voiceVideos[idx];
+    if (!video) return null;
+    const videoKey = `voice-${video.id}-${idx}`;
+    const liked = likedVideos.has(videoKey);
+    return (
+      <div key={videoKey} className="mb-3">
+        <div className="inline-block max-w-[72ch] rounded-2xl bg-[var(--white)] px-4 py-2 ring-1 ring-black/10">
+          {renderVideoEmbed(videoKey, video, liked)}
+        </div>
+      </div>
+    );
+  }
+
+  function renderVideoEmbed(videoKey: string, video: { id: string, url: string, title?: string, embedUrl?: string }, liked: boolean) {
+    return (
+      <div key={videoKey} className="my-3 flex items-start gap-2">
+        <div className="flex-1 overflow-hidden rounded-xl">
+          {video.embedUrl ? (
+            <iframe width="100%" height="200px" src={video.embedUrl} />
+          ) : (
+            <ReactPlayer src={video.url} width="100%" height="200px" controls />
+          )}
+          <div className="mt-1 text-sm text-[var(--text-muted)]">{video.title}</div>
+        </div>
+        <button
+          onClick={() => toggleLike(videoKey)}
+          className={`mt-2 shrink-0 flex items-center justify-center w-9 h-9 rounded-full border transition-all duration-200 cursor-pointer ${
+            liked
+              ? "bg-red-50 border-red-300 text-red-500 scale-110"
+              : "bg-white border-black/10 text-[var(--text-muted)] hover:border-red-300 hover:text-red-400"
+          }`}
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 24 24"
+            fill={liked ? "currentColor" : "none"}
+            stroke="currentColor"
+            strokeWidth={2}
+            className="w-4 h-4"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z"
+            />
+          </svg>
+        </button>
+      </div>
+    );
+  }
+
+  const hasContent = messages.length > 0 || transcripts.length > 0;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[var(--primary-light)] via-[var(--white)] to-[var(--white)] text-[var(--text-dark)]">
@@ -117,7 +268,7 @@ export default function Chat() {
           ref={scrollRef}
           className="flex-1 overflow-y-auto pb-20"
         >
-          {messages.length === 0 && transcripts.length === 0 && (
+          {!hasContent && (
             <div className="flex flex-col items-center justify-center h-full py-16">
               <h2 className="text-2xl font-semibold text-[var(--text-dark)] mb-2">
                 Hey, how are you feeling today?
@@ -151,76 +302,20 @@ export default function Chat() {
             </div>
           )}
 
-          {messages.map(message => (
-            <div
-              key={message.id}
-              className={
-                message.role === "user"
-                  ? "mb-4 text-right"
-                  : message.role === "assistant"
-                    ? "mb-4"
-                    : "mb-4 text-center text-xs text-[var(--text-muted)]"
-              }
-            >
-              <div
-                className={
-                  message.role === "user"
-                    ? "inline-block max-w-[72ch] rounded-2xl bg-[var(--primary-light)] px-4 py-2 text-[var(--text-dark)] ring-1 ring-[var(--primary)]"
-                    : message.role === "assistant"
-                      ? "inline-block max-w-[72ch] rounded-2xl bg-[var(--white)] px-4 py-2 text-[var(--text-dark)] ring-1 ring-black/10"
-                      : ""
-                }
-              >
-                {message.parts.map((part, i) => {
-                  if (part.type === 'text') {
-                    return <div key={`${message.id}-${i}`} dangerouslySetInnerHTML={{ __html: part.text }} />;
-                  }
-                  if (part.type === 'tool-fetchVideos' && Array.isArray(part.output)) {
-                    return part.output?.map((video: { id: string, url: string, title?: string, description?: string, thumbnail?: string, selectedSection?: { startSeconds: number, reason: string }, startUrl?: string, embedUrl?: string }, j: number) => {
-                      const videoKey = `${video.id}-${j}`;
-                      const liked = likedVideos.has(videoKey);
-
-                      return (
-                        <div key={`${message.id}-${i}-${j}`} className="my-3 flex items-start gap-2">
-                          <div className="flex-1 overflow-hidden rounded-xl">
-                            {video.embedUrl ? (
-                              <iframe width="100%" height="200px" src={video.embedUrl} />
-                            ) : (
-                              <ReactPlayer src={video.url} width="100%" height="200px" controls />
-                            )}
-                            <div className="mt-1 text-sm text-[var(--text-muted)]">{video.title}</div>
-                          </div>
-                          <button
-                            onClick={() => toggleLike(videoKey)}
-                            className={`mt-2 shrink-0 flex items-center justify-center w-9 h-9 rounded-full border transition-all duration-200 cursor-pointer ${
-                              liked
-                                ? "bg-red-50 border-red-300 text-red-500 scale-110"
-                                : "bg-white border-black/10 text-[var(--text-muted)] hover:border-red-300 hover:text-red-400"
-                            }`}
-                          >
-                            <svg
-                              xmlns="http://www.w3.org/2000/svg"
-                              viewBox="0 0 24 24"
-                              fill={liked ? "currentColor" : "none"}
-                              stroke="currentColor"
-                              strokeWidth={2}
-                              className="w-4 h-4"
-                            >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z"
-                              />
-                            </svg>
-                          </button>
-                        </div>
-                      );
-                    });
-                  }
-                })}
-              </div>
-            </div>
-          ))}
+          {timeline.map((item, i) => {
+            if (item.type === "message") {
+              const message = messages.find(m => m.id === item.id);
+              if (!message) return null;
+              return renderTextMessage(message);
+            }
+            if (item.type === "transcript") {
+              return renderTranscript(item.idx);
+            }
+            if (item.type === "video") {
+              return renderVoiceVideo(item.idx);
+            }
+            return null;
+          })}
 
           {isThinking && (
             <div className="mb-4">
@@ -234,79 +329,6 @@ export default function Chat() {
                   {thinkingWord}...
                 </span>
               </div>
-            </div>
-          )}
-
-          {transcripts.length > 0 && (
-            <div className="mt-6 border-t border-black/5 pt-4">
-              <div className="flex items-center gap-2 mb-3">
-                <span className="h-2 w-2 rounded-full bg-red-500 animate-pulse" />
-                <span className="text-xs font-medium text-[var(--text-muted)] uppercase tracking-wide">
-                  Voice Conversation
-                </span>
-              </div>
-              {transcripts.map((t, idx) => (
-                <div
-                  key={idx}
-                  className={t.role === "user" ? "mb-3 text-right" : "mb-3"}
-                >
-                  <div
-                    className={
-                      t.role === "user"
-                        ? "inline-block max-w-[72ch] rounded-2xl bg-[var(--primary-light)] px-4 py-2 text-[var(--text-dark)] ring-1 ring-[var(--primary)]"
-                        : "inline-block max-w-[72ch] rounded-2xl bg-[var(--white)] px-4 py-2 text-[var(--text-dark)] ring-1 ring-black/10"
-                    }
-                  >
-                    <div className="text-[10px] font-medium text-[var(--text-muted)] mb-0.5">
-                      {t.role === "user" ? "You (voice)" : "Dr. Erik (voice)"}
-                    </div>
-                    <div className="text-sm">{t.text}</div>
-                  </div>
-                </div>
-              ))}
-              {voiceVideos.map((video, idx) => {
-                const videoKey = `voice-${video.id}-${idx}`;
-                const liked = likedVideos.has(videoKey);
-                return (
-                  <div key={videoKey} className="mb-3">
-                    <div className="inline-block max-w-[72ch] rounded-2xl bg-[var(--white)] px-4 py-2 ring-1 ring-black/10">
-                      <div className="my-2 flex items-start gap-2">
-                        <div className="flex-1 overflow-hidden rounded-xl">
-                          {video.embedUrl ? (
-                            <iframe width="100%" height="200px" src={video.embedUrl} />
-                          ) : (
-                            <ReactPlayer src={video.url} width="100%" height="200px" controls />
-                          )}
-                          <div className="mt-1 text-sm text-[var(--text-muted)]">{video.title}</div>
-                        </div>
-                        <button
-                          onClick={() => toggleLike(videoKey)}
-                          className={`mt-2 shrink-0 flex items-center justify-center w-9 h-9 rounded-full border transition-all duration-200 cursor-pointer ${
-                            liked
-                              ? "bg-red-50 border-red-300 text-red-500 scale-110"
-                              : "bg-white border-black/10 text-[var(--text-muted)] hover:border-red-300 hover:text-red-400"
-                          }`}
-                        >
-                          <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            viewBox="0 0 24 24"
-                            fill={liked ? "currentColor" : "none"}
-                            stroke="currentColor"
-                            strokeWidth={2}
-                            className="w-4 h-4"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z"
-                            />
-                          </svg>
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
             </div>
           )}
         </div>

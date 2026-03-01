@@ -152,7 +152,7 @@ export function useMicrophone() {
           responseModalities: [Modality.AUDIO],
           speechConfig: {
             voiceConfig: {
-              prebuiltVoiceConfig: { voiceName: "Zephyr" },
+              prebuiltVoiceConfig: { voiceName: "Charon" },
             },
           },
           systemInstruction: SYSTEM_PROMPT,

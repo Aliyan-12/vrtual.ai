@@ -22,7 +22,7 @@ export class VoiceService {
           speechConfig: {
               voiceConfig: {
                   prebuiltVoiceConfig: {
-                      voiceName: 'zephyr'
+                      voiceName: 'sadaltager'
                       // Allowed voice names are: achernar, achird, algenib, algieba, alnilam, aoede, autonoe, callirrhoe, charon, despina, enceladus, erinome, fenrir, gacrux, iapetus, kore, laomedeia, leda, orus, puck, pulcherrima, rasalgethi, sadachbia, sadaltager, schedar, sulafat, umbriel, vindemiatrix, zephyr, zubenelgenubi
                   }
               }

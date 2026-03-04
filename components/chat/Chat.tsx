@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { useChat } from '@ai-sdk/react';
-import { useMicrophone, VoiceVideo } from '@/lib/hooks/useMicrophone';
+import { useMicrophone, VoiceVideo, ConnectionStatus } from '@/lib/hooks/useMicrophone';
 import MicButton from '@/components/buttons/MicButton';
 
 const ReactPlayer = dynamic(() => import("react-player"), { ssr: false });
@@ -51,6 +51,8 @@ export default function Chat() {
     startRecording,
     stopRecording,
     connected,
+    connectionStatus,
+    statusMessage,
     recording,
     transcripts,
     videos: voiceVideos,
@@ -336,6 +338,26 @@ export default function Chat() {
         </div>
 
         <div className="sticky bottom-0">
+          {statusMessage && (
+            <div className={`mb-2 flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-xs font-medium transition-all duration-300 ${
+              connectionStatus === "error"
+                ? "bg-red-100 text-red-700"
+                : connectionStatus === "reconnecting" || connectionStatus === "connecting"
+                  ? "bg-amber-100 text-amber-700"
+                  : "bg-emerald-100 text-emerald-700"
+            }`}>
+              {(connectionStatus === "connecting" || connectionStatus === "reconnecting") && (
+                <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
+              )}
+              {connectionStatus === "connected" && (
+                <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />
+              )}
+              {connectionStatus === "error" && (
+                <span className="inline-block h-2 w-2 rounded-full bg-red-500" />
+              )}
+              {statusMessage}
+            </div>
+          )}
           <div className="pb-4 pt-2">
             <form
               onSubmit={(e) => {
@@ -344,7 +366,7 @@ export default function Chat() {
               }}
               className="flex items-end gap-3"
             >
-              <MicButton recording={recording} onToggle={handleMicToggle} />
+              <MicButton recording={recording} connectionStatus={connectionStatus} onToggle={handleMicToggle} />
               <textarea
                 value={text}
                 onChange={(e) => setText(e.target.value)}

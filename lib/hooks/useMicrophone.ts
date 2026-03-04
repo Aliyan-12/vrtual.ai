@@ -14,30 +14,22 @@ export type VoiceVideo = {
   embedUrl?: string;
 };
 
-const PCM_WORKLET_CODE = `
-class PcmProcessor extends AudioWorkletProcessor {
-  process(inputs) {
-    const input = inputs[0];
-    if (input.length > 0) {
-      const float32 = input[0];
-      const int16 = new Int16Array(float32.length);
-      for (let i = 0; i < float32.length; i++) {
-        const s = Math.max(-1, Math.min(1, float32[i]));
-        int16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
-      }
-      this.port.postMessage(int16.buffer, [int16.buffer]);
-    }
-    return true;
-  }
-}
-registerProcessor("pcm-processor", PcmProcessor);
-`;
+export type ConnectionStatus =
+  | "disconnected"
+  | "connecting"
+  | "connected"
+  | "reconnecting"
+  | "error";
+
+const MAX_RECONNECT_ATTEMPTS = 3;
+const RECONNECT_DELAY = 1500;
 
 export function useMicrophone() {
-  const [connected, setConnected] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>("disconnected");
   const [recording, setRecording] = useState(false);
   const [transcripts, setTranscripts] = useState<VoiceTranscript[]>([]);
   const [videos, setVideos] = useState<VoiceVideo[]>([]);
+  const [statusMessage, setStatusMessage] = useState("");
 
   const sessionRef = useRef<Session | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
@@ -47,10 +39,23 @@ export function useMicrophone() {
   const playbackCtxRef = useRef<AudioContext | null>(null);
   const playbackTimeRef = useRef(0);
   const connectingRef = useRef(false);
+  const wasRecordingRef = useRef(false);
+  const reconnectAttemptsRef = useRef(0);
+  const intentionalCloseRef = useRef(false);
+
+  function showStatus(msg: string, duration = 3000) {
+    setStatusMessage(msg);
+    if (duration > 0) {
+      setTimeout(() => setStatusMessage(""), duration);
+    }
+  }
 
   function getPlaybackCtx() {
-    if (!playbackCtxRef.current) {
+    if (!playbackCtxRef.current || playbackCtxRef.current.state === "closed") {
       playbackCtxRef.current = new AudioContext({ sampleRate: 24000 });
+    }
+    if (playbackCtxRef.current.state === "suspended") {
+      playbackCtxRef.current.resume();
     }
     return playbackCtxRef.current;
   }
@@ -131,12 +136,58 @@ export function useMicrophone() {
       try {
         session.sendToolResponse({ functionResponses: responses });
       } catch {
-        // session already closed
       }
     }
   }
 
-  const connect = useCallback(async () => {
+  function cleanupMic() {
+    if (workletNodeRef.current) {
+      workletNodeRef.current.port.onmessage = null;
+      workletNodeRef.current.disconnect();
+      workletNodeRef.current = null;
+    }
+    if (sourceRef.current) {
+      sourceRef.current.disconnect();
+      sourceRef.current = null;
+    }
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+    }
+    if (audioCtxRef.current && audioCtxRef.current.state !== "closed") {
+      audioCtxRef.current.close();
+      audioCtxRef.current = null;
+    }
+  }
+
+  async function attemptReconnect() {
+    if (reconnectAttemptsRef.current >= MAX_RECONNECT_ATTEMPTS) {
+      showStatus("Connection lost. Please try again.", 5000);
+      setConnectionStatus("error");
+      setRecording(false);
+      cleanupMic();
+      reconnectAttemptsRef.current = 0;
+      return;
+    }
+
+    reconnectAttemptsRef.current += 1;
+    const attempt = reconnectAttemptsRef.current;
+    setConnectionStatus("reconnecting");
+    showStatus(`Reconnecting... (${attempt}/${MAX_RECONNECT_ATTEMPTS})`, 0);
+
+    await new Promise(r => setTimeout(r, RECONNECT_DELAY));
+
+    sessionRef.current = null;
+    connectingRef.current = false;
+    const session = await createSession();
+    if (session && wasRecordingRef.current) {
+      reconnectAttemptsRef.current = 0;
+      showStatus("Reconnected", 2000);
+      await setupMicStream(session);
+    }
+  }
+
+  async function createSession(): Promise<Session | null> {
     if (sessionRef.current) return sessionRef.current;
     if (connectingRef.current) return null;
     connectingRef.current = true;
@@ -181,7 +232,8 @@ export function useMicrophone() {
         },
         callbacks: {
           onopen: () => {
-            setConnected(true);
+            setConnectionStatus("connected");
+            reconnectAttemptsRef.current = 0;
           },
           onmessage: (msg: any) => {
             if (msg.serverContent?.modelTurn?.parts) {
@@ -212,10 +264,24 @@ export function useMicrophone() {
             console.error("Live session error:", err.message || err);
           },
           onclose: () => {
-            setConnected(false);
-            setRecording(false);
             sessionRef.current = null;
             cleanupMic();
+
+            if (intentionalCloseRef.current) {
+              intentionalCloseRef.current = false;
+              setConnectionStatus("disconnected");
+              setRecording(false);
+              showStatus("Voice disconnected", 2000);
+              return;
+            }
+
+            if (wasRecordingRef.current) {
+              attemptReconnect();
+            } else {
+              setConnectionStatus("disconnected");
+              setRecording(false);
+              showStatus("Voice session ended", 3000);
+            }
           },
         },
       });
@@ -224,43 +290,18 @@ export function useMicrophone() {
       return session;
     } catch (err) {
       console.error("Failed to connect:", err);
+      showStatus("Failed to connect. Check your connection.", 4000);
+      setConnectionStatus("error");
       return null;
     } finally {
       connectingRef.current = false;
     }
-  }, []);
-
-  function cleanupMic() {
-    if (workletNodeRef.current) {
-      workletNodeRef.current.port.onmessage = null;
-      workletNodeRef.current.disconnect();
-      workletNodeRef.current = null;
-    }
-    if (sourceRef.current) {
-      sourceRef.current.disconnect();
-      sourceRef.current = null;
-    }
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((t) => t.stop());
-      streamRef.current = null;
-    }
-    if (audioCtxRef.current) {
-      audioCtxRef.current.close();
-      audioCtxRef.current = null;
-    }
   }
 
-  async function startRecording() {
-    let session = sessionRef.current;
-    if (!session) {
-      session = await connect();
-    }
-    if (!session) return;
-
+  async function setupMicStream(session: Session) {
     try {
       const micStream = await navigator.mediaDevices.getUserMedia({
         audio: {
-          sampleRate: 16000,
           channelCount: 1,
           echoCancellation: true,
           noiseSuppression: true,
@@ -269,73 +310,134 @@ export function useMicrophone() {
       streamRef.current = micStream;
 
       const audioCtx = new AudioContext({ sampleRate: 16000 });
+      if (audioCtx.state === "suspended") {
+        await audioCtx.resume();
+      }
       audioCtxRef.current = audioCtx;
 
-      const blob = new Blob([PCM_WORKLET_CODE], { type: "application/javascript" });
-      const workletUrl = URL.createObjectURL(blob);
-      await audioCtx.audioWorklet.addModule(workletUrl);
-      URL.revokeObjectURL(workletUrl);
+      const actualRate = audioCtx.sampleRate;
 
-      const source = audioCtx.createMediaStreamSource(micStream);
-      sourceRef.current = source;
+      try {
+        await audioCtx.audioWorklet.addModule("/pcm-processor.js");
+        const workletNode = new AudioWorkletNode(audioCtx, "pcm-processor");
+        workletNodeRef.current = workletNode;
 
-      const workletNode = new AudioWorkletNode(audioCtx, "pcm-processor");
-      workletNodeRef.current = workletNode;
+        workletNode.port.onmessage = (e: MessageEvent) => {
+          if (!sessionRef.current) return;
+          const pcmBuffer: ArrayBuffer = e.data;
+          sendPcmData(pcmBuffer, actualRate);
+        };
 
-      workletNode.port.onmessage = (e: MessageEvent) => {
-        if (!sessionRef.current) return;
-        const pcmBuffer: ArrayBuffer = e.data;
-        const bytes = new Uint8Array(pcmBuffer);
-
-        let binary = "";
-        for (let i = 0; i < bytes.length; i++) {
-          binary += String.fromCharCode(bytes[i]);
-        }
-        const base64 = btoa(binary);
-
-        try {
-          sessionRef.current.sendRealtimeInput({
-            audio: {
-              data: base64,
-              mimeType: "audio/pcm;rate=16000",
-            },
-          });
-        } catch {
-          // session closed, ignore
-        }
-      };
-
-      source.connect(workletNode);
-      workletNode.connect(audioCtx.destination);
+        const source = audioCtx.createMediaStreamSource(micStream);
+        sourceRef.current = source;
+        source.connect(workletNode);
+        workletNode.connect(audioCtx.destination);
+      } catch {
+        const source = audioCtx.createMediaStreamSource(micStream);
+        sourceRef.current = source;
+        const scriptNode = audioCtx.createScriptProcessor(4096, 1, 1);
+        scriptNode.onaudioprocess = (e: AudioProcessingEvent) => {
+          if (!sessionRef.current) return;
+          const float32 = e.inputBuffer.getChannelData(0);
+          const int16 = new Int16Array(float32.length);
+          for (let i = 0; i < float32.length; i++) {
+            const s = Math.max(-1, Math.min(1, float32[i]));
+            int16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+          }
+          sendPcmData(int16.buffer, actualRate);
+        };
+        source.connect(scriptNode);
+        scriptNode.connect(audioCtx.destination);
+        (workletNodeRef as any).current = scriptNode;
+      }
 
       setRecording(true);
+      wasRecordingRef.current = true;
     } catch (err) {
       console.error("Mic error:", err);
+      showStatus("Microphone access denied", 3000);
     }
   }
 
+  function sendPcmData(pcmBuffer: ArrayBuffer, sampleRate: number) {
+    if (!sessionRef.current) return;
+    const bytes = new Uint8Array(pcmBuffer);
+
+    let binary = "";
+    for (let i = 0; i < bytes.length; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    const base64 = btoa(binary);
+
+    try {
+      sessionRef.current.sendRealtimeInput({
+        audio: {
+          data: base64,
+          mimeType: `audio/pcm;rate=${sampleRate}`,
+        },
+      });
+    } catch {
+    }
+  }
+
+  const connect = useCallback(async () => {
+    setConnectionStatus("connecting");
+    showStatus("Connecting to voice...", 0);
+    const session = await createSession();
+    if (session) {
+      showStatus("Voice connected", 2000);
+    }
+    return session;
+  }, []);
+
+  async function startRecording() {
+    let session = sessionRef.current;
+    if (!session) {
+      setConnectionStatus("connecting");
+      showStatus("Connecting to voice...", 0);
+      session = await createSession();
+    }
+    if (!session) return;
+
+    showStatus("Voice connected", 2000);
+    await setupMicStream(session);
+  }
+
   function stopRecording() {
+    wasRecordingRef.current = false;
     cleanupMic();
     setRecording(false);
   }
 
   function disconnect() {
+    wasRecordingRef.current = false;
+    intentionalCloseRef.current = true;
     stopRecording();
     if (sessionRef.current) {
       try {
         sessionRef.current.close();
       } catch {
-        // already closed
       }
       sessionRef.current = null;
     }
-    setConnected(false);
-    if (playbackCtxRef.current) {
+    setConnectionStatus("disconnected");
+    if (playbackCtxRef.current && playbackCtxRef.current.state !== "closed") {
       playbackCtxRef.current.close();
       playbackCtxRef.current = null;
     }
     playbackTimeRef.current = 0;
   }
 
-  return { connect, startRecording, stopRecording, disconnect, recording, connected, transcripts, videos };
+  return {
+    connect,
+    startRecording,
+    stopRecording,
+    disconnect,
+    recording,
+    connected: connectionStatus === "connected",
+    connectionStatus,
+    statusMessage,
+    transcripts,
+    videos,
+  };
 }

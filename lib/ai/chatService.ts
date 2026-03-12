@@ -11,6 +11,30 @@ import { google } from "@ai-sdk/google";
 import { searchYouTube, fetchFullDescription } from '../tools/youtube';
 import { extractTimestamps } from '../tools/timestamp';
 import { SYSTEM_PROMPT, FETCH_VIDEOS_DESCRIPTION } from './systemPrompt';
+import { getDb } from "@/lib/db/mongo";
+
+type Section = { time: string; seconds: number; label?: string };
+type VideoSuggestion = {
+  source: "chat" | "voice";
+  context: string;
+  emotionDescription: string;
+  reason?: string;
+  startSeconds?: number;
+  startUrl?: string;
+  embedUrl?: string;
+  suggestedAt: Date;
+};
+type VideoDoc = {
+  id: string;
+  title: string;
+  description: string;
+  thumbnail: string;
+  url: string;
+  sections: Section[];
+  createdAt?: Date;
+  updatedAt?: Date;
+  suggestions?: VideoSuggestion[];
+};
 
 export class ChatService {
     static async stream(messages: UIMessage[]) {
@@ -53,6 +77,36 @@ export class ChatService {
 
                   if (!sections.length) {
                     enriched.push(video);
+                    try {
+                      const db = await getDb();
+                      const col = db.collection<VideoDoc>("videos");
+                      await col.updateOne(
+                        { id: video.id },
+                        {
+                          $set: {
+                            id: video.id,
+                            title: video.title,
+                            description: fullDescription || video.description,
+                            thumbnail: video.thumbnail,
+                            url: video.url,
+                            sections,
+                            updatedAt: new Date(),
+                          },
+                          $setOnInsert: { createdAt: new Date() },
+                          $push: {
+                            suggestions: {
+                              source: "chat",
+                              context: userContext,
+                              emotionDescription: userContext,
+                              suggestedAt: new Date(),
+                            },
+                          },
+                        },
+                        { upsert: true }
+                      );
+                    } catch (err) {
+                      console.error("Mongo save (chat, no-sections) failed", { id: video.id, err });
+                    }
                     continue;
                   }
 
@@ -81,12 +135,47 @@ export class ChatService {
 
                   const startSeconds = JSON.parse(output.text).startSeconds;
 
+                  const suggestion = {
+                    source: "chat",
+                    context: userContext,
+                    emotionDescription: userContext,
+                    reason: JSON.parse(output.text).reason,
+                    startSeconds,
+                    startUrl: `${video.url}&t=${startSeconds}s`,
+                    embedUrl: `https://www.youtube.com/embed/${video.id}?start=${startSeconds}`,
+                    suggestedAt: new Date(),
+                  } as VideoSuggestion;
+
                   enriched.push({
                     ...video,
                     selectedSection: JSON.parse(output.text),
-                    startUrl: `${video.url}&t=${startSeconds}s`,
-                    embedUrl: `https://www.youtube.com/embed/${video.id}?start=${startSeconds}`,
+                    startUrl: suggestion.startUrl,
+                    embedUrl: suggestion.embedUrl,
                   });
+
+                  try {
+                    const db = await getDb();
+                    const col = db.collection<VideoDoc>("videos");
+                    await col.updateOne(
+                      { id: video.id },
+                      {
+                        $set: {
+                          id: video.id,
+                          title: video.title,
+                          description: fullDescription || video.description,
+                          thumbnail: video.thumbnail,
+                          url: video.url,
+                          sections,
+                          updatedAt: new Date(),
+                        },
+                        $setOnInsert: { createdAt: new Date() },
+                        $push: { suggestions: suggestion },
+                      },
+                      { upsert: true }
+                    );
+                  } catch (err) {
+                    console.error("Mongo save (chat, with-section) failed", { id: video.id, err });
+                  }
                 }
 
                 return enriched;

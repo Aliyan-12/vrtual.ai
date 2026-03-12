@@ -3,7 +3,30 @@ import { google } from "@ai-sdk/google";
 import { z } from "zod";
 import { searchYouTube, fetchFullDescription } from "@/lib/tools/youtube";
 import { extractTimestamps } from "@/lib/tools/timestamp";
+import { getDb } from "@/lib/db/mongo";
 
+type Section = { time: string; seconds: number; label?: string };
+type VideoSuggestion = {
+  source: "chat" | "voice";
+  context: string;
+  emotionDescription: string;
+  reason?: string;
+  startSeconds?: number;
+  startUrl?: string;
+  embedUrl?: string;
+  suggestedAt: Date;
+};
+type VideoDoc = {
+  id: string;
+  title: string;
+  description: string;
+  thumbnail: string;
+  url: string;
+  sections: Section[];
+  createdAt?: Date;
+  updatedAt?: Date;
+  suggestions?: VideoSuggestion[];
+};
 export async function POST(req: Request) {
   const { query, userContext } = await req.json();
 
@@ -33,6 +56,36 @@ export async function POST(req: Request) {
 
     if (!sections.length) {
       enriched.push(video);
+      try {
+        const db = await getDb();
+        const col = db.collection<VideoDoc>("videos");
+        await col.updateOne(
+          { id: video.id },
+          {
+            $set: {
+              id: video.id,
+              title: video.title,
+              description: fullDescription || video.description,
+              thumbnail: video.thumbnail,
+              url: video.url,
+              sections,
+              updatedAt: new Date(),
+            },
+            $setOnInsert: { createdAt: new Date() },
+            $push: {
+              suggestions: {
+                source: "voice",
+                context: userContext,
+                emotionDescription: userContext,
+                suggestedAt: new Date(),
+              },
+            },
+          },
+          { upsert: true }
+        );
+      } catch (err) {
+        console.error("Mongo save (voice, no-sections) failed", { id: video.id, err });
+      }
       continue;
     }
 
@@ -61,12 +114,47 @@ export async function POST(req: Request) {
 
     const startSeconds = JSON.parse(output.text).startSeconds;
 
+    const suggestion: VideoSuggestion = {
+      source: "voice",
+      context: userContext,
+      emotionDescription: userContext,
+      reason: JSON.parse(output.text).reason,
+      startSeconds,
+      startUrl: `${video.url}&t=${startSeconds}s`,
+      embedUrl: `https://www.youtube.com/embed/${video.id}?start=${startSeconds}`,
+      suggestedAt: new Date(),
+    };
+
     enriched.push({
       ...video,
       selectedSection: JSON.parse(output.text),
-      startUrl: `${video.url}&t=${startSeconds}s`,
-      embedUrl: `https://www.youtube.com/embed/${video.id}?start=${startSeconds}`,
+      startUrl: suggestion.startUrl,
+      embedUrl: suggestion.embedUrl,
     });
+
+    try {
+      const db = await getDb();
+      const col = db.collection<VideoDoc>("videos");
+      await col.updateOne(
+        { id: video.id },
+        {
+          $set: {
+            id: video.id,
+            title: video.title,
+            description: fullDescription || video.description,
+            thumbnail: video.thumbnail,
+            url: video.url,
+            sections,
+            updatedAt: new Date(),
+          },
+          $setOnInsert: { createdAt: new Date() },
+          $push: { suggestions: suggestion },
+        },
+        { upsert: true }
+      );
+    } catch (err) {
+      console.error("Mongo save (voice, with-section) failed", { id: video.id, err });
+    }
   }
 
   return Response.json(enriched);

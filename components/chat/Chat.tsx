@@ -194,7 +194,7 @@ function ChatInner({
     recording,
     transcripts,
     videos: voiceVideos,
-  } = useMicrophone();
+  } = useMicrophone(sessionId);
 
   const [text, setText] = useState("");
   const scrollRef = useRef<HTMLDivElement | null>(null);

@@ -24,7 +24,7 @@ export type ConnectionStatus =
 const MAX_RECONNECT_ATTEMPTS = 3;
 const RECONNECT_DELAY = 1500;
 
-export function useMicrophone() {
+export function useMicrophone(sessionId?: string) {
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>("disconnected");
   const [recording, setRecording] = useState(false);
   const [transcripts, setTranscripts] = useState<VoiceTranscript[]>([]);
@@ -113,6 +113,7 @@ export function useMicrophone() {
             body: JSON.stringify({
               query: call.args?.query || "",
               userContext: call.args?.userContext || "",
+              ...(sessionId ? { sessionId } : {}),
             }),
           });
           const result = await res.json();

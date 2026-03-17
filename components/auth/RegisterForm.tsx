@@ -1,9 +1,12 @@
 "use client";
 import Container from "@/components/Container";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
 
 export default function RegisterForm() {
+    const router = useRouter();
+
     async function handleSubmit(e: any) {
         e.preventDefault();
 
@@ -20,19 +23,14 @@ export default function RegisterForm() {
             });
 
             if (!res.ok) {
-            const text = await res.text();
+                const text = await res.text();
                 toast.error(text || "Something went wrong!");
-                console.log(text || "Something went wrong");
             } else {
-                // window.location.href = "/login";
-                toast.success("User Registered!");
-                console.log("User Registered!");
+                toast.success("Account created! Please sign in.");
+                router.push("/login");
             }
         } catch (err) {
             toast.error("Network error. Please try again.");
-            console.log("Network error. Please try again.");
-        } finally {
-            console.log("Registration process done");
         }
     }
 

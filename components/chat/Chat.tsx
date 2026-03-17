@@ -1,9 +1,12 @@
 'use client';
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useMemo } from "react";
 import dynamic from "next/dynamic";
 import { useChat } from '@ai-sdk/react';
+import { DefaultChatTransport } from 'ai';
 import { useMicrophone, VoiceVideo, ConnectionStatus } from '@/lib/hooks/useMicrophone';
 import MicButton from '@/components/buttons/MicButton';
+import { useSession } from "next-auth/react";
+import { useRouter } from "next/navigation";
 
 const ReactPlayer = dynamic(() => import("react-player"), { ssr: false });
 
@@ -26,8 +29,143 @@ type TimelineItem =
   | { type: "transcript"; idx: number }
   | { type: "video"; idx: number };
 
-export default function Chat() {
+type RestoredVideo = {
+  id: string;
+  url: string;
+  title?: string;
+  description?: string;
+  thumbnail?: string;
+  embedUrl?: string;
+  selectedSection?: { startSeconds: number; reason: string };
+};
+
+interface ChatProps {
+  sessionId?: string;
+}
+
+export default function Chat({ sessionId }: ChatProps) {
+  const { data: authSession, status: authStatus } = useSession();
+  const router = useRouter();
+  const isAuthenticated = authStatus === "authenticated" && !!authSession?.user;
+  const authLoading = authStatus === "loading";
+  const [loadedMessages, setLoadedMessages] = useState<any[] | null>(null);
+  const [loadedMessageVideos, setLoadedMessageVideos] = useState<Record<string, RestoredVideo[]>>({});
+  const [loadingHistory, setLoadingHistory] = useState(!!sessionId);
+
+  useEffect(() => {
+    if (authLoading) return;
+
+    if (sessionId && !isAuthenticated) {
+      router.replace("/chat");
+      return;
+    }
+
+    if (!sessionId || !isAuthenticated) {
+      setLoadingHistory(false);
+      return;
+    }
+
+    fetch(`/api/sessions/${sessionId}`)
+      .then(res => {
+        if (!res.ok) {
+          router.replace("/chat");
+          return null;
+        }
+        return res.json();
+      })
+      .then(data => {
+        if (data?.messages?.length) {
+          const videosMap = data.videos || {};
+          const msgVideos: Record<string, RestoredVideo[]> = {};
+
+          const msgs = data.messages.map((m: any) => {
+            // Build video lookup for this message
+            if (m.role === "assistant" && m.videoIds?.length > 0) {
+              const vids = m.videoIds
+                .map((vid: string) => videosMap[vid])
+                .filter(Boolean)
+                .map((v: any) => ({
+                  id: v.youtubeId,
+                  url: v.url,
+                  title: v.title,
+                  description: v.description,
+                  thumbnail: v.thumbnail,
+                  embedUrl: v.embedUrl,
+                  selectedSection: v.startSeconds != null
+                    ? { startSeconds: v.startSeconds, reason: v.selectedSectionReason }
+                    : undefined,
+                }));
+              if (vids.length > 0) {
+                msgVideos[m.id] = vids;
+              }
+            }
+
+            return {
+              id: m.id,
+              role: m.role,
+              content: m.content,
+              parts: [{ type: "text" as const, text: m.content }],
+            };
+          });
+
+          setLoadedMessageVideos(msgVideos);
+          setLoadedMessages(msgs);
+        } else {
+          setLoadedMessages([]);
+        }
+        setLoadingHistory(false);
+      })
+      .catch(() => {
+        setLoadingHistory(false);
+        setLoadedMessages([]);
+      });
+  }, [sessionId, isAuthenticated, authLoading, router]);
+
+  if (authLoading || loadingHistory) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-[var(--primary-light)] via-[var(--white)] to-[var(--white)] flex items-center justify-center">
+        <div className="flex items-center gap-2 text-sm text-[var(--text-muted)]">
+          <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-[var(--primary)] border-t-transparent" />
+          Loading chat...
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <ChatInner
+      sessionId={isAuthenticated ? sessionId : undefined}
+      initialMessages={loadedMessages ?? undefined}
+      messageVideos={loadedMessageVideos}
+      isAuthenticated={isAuthenticated}
+      router={router}
+    />
+  );
+}
+
+function ChatInner({
+  sessionId,
+  initialMessages,
+  messageVideos,
+  isAuthenticated,
+  router,
+}: {
+  sessionId?: string;
+  initialMessages?: any[];
+  messageVideos: Record<string, RestoredVideo[]>;
+  isAuthenticated: boolean;
+  router: ReturnType<typeof useRouter>;
+}) {
+  const transport = useMemo(() => {
+    return new DefaultChatTransport({
+      api: '/api/chat',
+      body: sessionId ? { sessionId } : undefined,
+    });
+  }, [sessionId]);
+
   const { messages, sendMessage, status } = useChat({
+    ...(initialMessages?.length ? { messages: initialMessages } : {}),
+    transport,
     onFinish: async () => {
       try {
         const cookieValue = document.cookie
@@ -129,12 +267,36 @@ export default function Chat() {
     });
   }
 
-  function send(override?: string) {
+  async function send(override?: string) {
     const t = (override || text).trim();
     if (!t) return;
+
+    if (isAuthenticated && !sessionId) {
+      try {
+        const res = await fetch("/api/sessions", { method: "POST" });
+        const data = await res.json();
+        if (data.id) {
+          sessionStorage.setItem("pendingMessage", t);
+          router.push(`/chat/${data.id}`);
+          return;
+        }
+      } catch (err) {
+        console.error("Failed to create session:", err);
+      }
+    }
+
     sendMessage({ text: t });
     setText("");
   }
+
+  useEffect(() => {
+    if (!sessionId) return;
+    const pending = sessionStorage.getItem("pendingMessage");
+    if (pending) {
+      sessionStorage.removeItem("pendingMessage");
+      sendMessage({ text: pending });
+    }
+  }, [sessionId]);
 
   async function handleMicToggle() {
     if (recording) {
@@ -150,6 +312,9 @@ export default function Chat() {
   }, [timeline, isThinking]);
 
   function renderTextMessage(message: typeof messages[number]) {
+    // Get restored videos for this message (from DB history)
+    const restoredVideos = messageVideos[message.id];
+
     return (
       <div
         key={message.id}
@@ -181,6 +346,13 @@ export default function Chat() {
                 return renderVideoEmbed(videoKey, video, liked);
               });
             }
+          })}
+
+          {/* Render restored videos from DB history */}
+          {restoredVideos?.map((video, j) => {
+            const videoKey = `restored-${video.id}-${j}`;
+            const liked = likedVideos.has(videoKey);
+            return renderVideoEmbed(videoKey, video, liked);
           })}
         </div>
       </div>
@@ -280,6 +452,11 @@ export default function Chat() {
               <p className="text-[var(--text-muted)] mb-8 text-sm">
                 Pick something that matches your mood, or type your own message below.
               </p>
+              {!isAuthenticated && (
+                <p className="text-xs text-[var(--text-muted)] mb-4">
+                  <a href="/login" className="text-[var(--primary)] hover:underline">Sign in</a> to save your conversations.
+                </p>
+              )}
               {loadingSuggestions ? (
                 <div className="flex items-center gap-2 text-sm text-[var(--text-muted)]">
                   <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-[var(--primary)] border-t-transparent" />

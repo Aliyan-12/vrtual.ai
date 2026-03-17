@@ -8,9 +8,7 @@ export default function Navbar() {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const { data: session, status } = useSession();
-  
-  // if (status === "loading") return <p>Loading...</p>;
-  // if (!session) return <p>You are not logged in.</p>;
+  const isLoggedIn = status === "authenticated" && !!session?.user;
 
   return (
     <nav className="sticky top-0 z-50 w-full bg-white/70 backdrop-blur">
@@ -41,21 +39,32 @@ export default function Navbar() {
           </Link>
           <Link href="/#resources" className="text-[var(--text-muted)] hover:text-[var(--text-dark)]">Resources</Link>
           <Link href="/#how-it-works" className="text-[var(--text-muted)] hover:text-[var(--text-dark)]">How It Works</Link>
-          {/* {session ? "Logged in" : "Not logged in"} */}
-          <div className="flex gap-2">
-            <Link
-              href="/login"
-              className="rounded-full bg-[var(--primary)] px-3 py-1.5 text-white hover:bg-[var(--primary-hover)]"
-            >
-              Login
-            </Link>
-            <Link
-              href="/register"
-              className="rounded-full bg-[var(--secondary)] px-3 py-1.5 text-white hover:text-black hover:bg-[var(--secondary-hover)]"
-            >
-              Register
-            </Link>
-          </div>
+          {isLoggedIn ? (
+            <div className="flex items-center gap-3">
+              <span className="text-[var(--text-muted)]">{session.user.name || session.user.email}</span>
+              <button
+                onClick={() => signOut({ callbackUrl: "/" })}
+                className="rounded-full bg-[var(--text-muted)] px-3 py-1.5 text-white hover:bg-[var(--text-dark)]"
+              >
+                Logout
+              </button>
+            </div>
+          ) : (
+            <div className="flex gap-2">
+              <Link
+                href="/login"
+                className="rounded-full bg-[var(--primary)] px-3 py-1.5 text-white hover:bg-[var(--primary-hover)]"
+              >
+                Login
+              </Link>
+              <Link
+                href="/register"
+                className="rounded-full bg-[var(--secondary)] px-3 py-1.5 text-white hover:text-black hover:bg-[var(--secondary-hover)]"
+              >
+                Register
+              </Link>
+            </div>
+          )}
         </div>
       </div>
       {open && (
@@ -66,10 +75,22 @@ export default function Navbar() {
               <Link href="/chat" className={pathname?.startsWith("/chat") ? "text-[var(--text-dark)]" : "hover:text-[var(--text-dark)]"} onClick={() => setOpen(false)}>Chat</Link>
               <Link href="/#resources" className="hover:text-[var(--text-dark)]" onClick={() => setOpen(false)}>Resources</Link>
               <Link href="/#how-it-works" className="hover:text-[var(--text-dark)]" onClick={() => setOpen(false)}>How It Works</Link>
-              <div className="flex gap-2">
-                <Link href="/login" className="w-fit rounded-full bg-[var(--primary)] px-3 py-1.5 text-white hover:bg-[var(--primary-hover)]" onClick={() => setOpen(false)}>Login</Link>
-                <Link href="/register" className="w-fit rounded-full bg-[var(--secondary)] px-3 py-1.5 text-white hover:text-black hover:bg-[var(--secondary-hover)]" onClick={() => setOpen(false)}>Register</Link>
-              </div>
+              {isLoggedIn ? (
+                <div className="flex flex-col gap-2">
+                  <span className="text-[var(--text-muted)]">{session.user.name || session.user.email}</span>
+                  <button
+                    onClick={() => { setOpen(false); signOut({ callbackUrl: "/" }); }}
+                    className="w-fit rounded-full bg-[var(--text-muted)] px-3 py-1.5 text-white hover:bg-[var(--text-dark)]"
+                  >
+                    Logout
+                  </button>
+                </div>
+              ) : (
+                <div className="flex gap-2">
+                  <Link href="/login" className="w-fit rounded-full bg-[var(--primary)] px-3 py-1.5 text-white hover:bg-[var(--primary-hover)]" onClick={() => setOpen(false)}>Login</Link>
+                  <Link href="/register" className="w-fit rounded-full bg-[var(--secondary)] px-3 py-1.5 text-white hover:text-black hover:bg-[var(--secondary-hover)]" onClick={() => setOpen(false)}>Register</Link>
+                </div>
+              )}
             </div>
           </div>
         </div>

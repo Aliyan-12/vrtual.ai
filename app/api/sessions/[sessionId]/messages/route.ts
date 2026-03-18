@@ -20,13 +20,14 @@ export async function POST(
     return new Response("Session not found", { status: 404 });
   }
 
-  const { role, content } = await req.json();
+  const { role, content, videoIds } = await req.json();
 
   const message = await prisma.message.create({
     data: {
       sessionId,
       role,
       content,
+      ...(Array.isArray(videoIds) && videoIds.length > 0 ? { videoIds } : {}),
     },
   });
 

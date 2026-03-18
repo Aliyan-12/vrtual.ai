@@ -2,6 +2,8 @@ import { useState, useRef, useCallback } from "react";
 import { GoogleGenAI, Modality, Session, Type } from "@google/genai";
 import { SYSTEM_PROMPT, FETCH_VIDEOS_DESCRIPTION } from "@/lib/ai/systemPrompt";
 
+const HISTORY_SEPARATOR = "────────────────────────────────────────";
+
 export type VoiceTranscript = {
   role: "user" | "assistant";
   text: string;
@@ -42,6 +44,8 @@ export function useMicrophone(sessionId?: string) {
   const wasRecordingRef = useRef(false);
   const reconnectAttemptsRef = useRef(0);
   const intentionalCloseRef = useRef(false);
+  const pendingTranscriptRef = useRef<VoiceTranscript | null>(null);
+  const pendingVideoIdsRef = useRef<string[]>([]);
 
   function showStatus(msg: string, duration = 3000) {
     setStatusMessage(msg);
@@ -87,7 +91,44 @@ export function useMicrophone(sessionId?: string) {
     playbackTimeRef.current = startTime + audioBuffer.duration;
   }
 
+  async function saveTranscriptToDB(role: "user" | "assistant", content: string, videoIds?: string[]) {
+    if (!sessionId || !content.trim()) return;
+    try {
+      await fetch(`/api/sessions/${sessionId}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          role,
+          content,
+          ...(videoIds && videoIds.length > 0 ? { videoIds } : {}),
+        }),
+      });
+    } catch (e) {
+      console.error("Failed to save voice transcript:", e);
+    }
+  }
+
+  function flushPendingTranscript() {
+    const pending = pendingTranscriptRef.current;
+    if (pending && pending.text.trim()) {
+      // Attach any pending videoIds to assistant messages
+      const videoIds = pending.role === "assistant" ? pendingVideoIdsRef.current.splice(0) : undefined;
+      saveTranscriptToDB(pending.role, pending.text, videoIds);
+    }
+    pendingTranscriptRef.current = null;
+  }
+
   function appendTranscript(role: "user" | "assistant", text: string) {
+    // When role changes, the previous transcript is complete — save it
+    if (pendingTranscriptRef.current && pendingTranscriptRef.current.role !== role) {
+      flushPendingTranscript();
+      pendingTranscriptRef.current = { role, text };
+    } else if (pendingTranscriptRef.current) {
+      pendingTranscriptRef.current.text += text;
+    } else {
+      pendingTranscriptRef.current = { role, text };
+    }
+
     setTranscripts(prev => {
       if (prev.length > 0 && prev[prev.length - 1].role === role) {
         const updated = [...prev];
@@ -117,11 +158,18 @@ export function useMicrophone(sessionId?: string) {
             }),
           });
           const result = await res.json();
-          setVideos(prev => [...prev, ...result]);
+          const videos = result.videos || result;
+          setVideos(prev => [...prev, ...videos]);
+
+          // Track saved video IDs to attach to the next assistant transcript
+          if (result.savedVideoIds?.length) {
+            pendingVideoIdsRef.current.push(...result.savedVideoIds);
+          }
+
           responses.push({
             id: call.id,
             name: call.name,
-            response: { result },
+            response: { result: videos },
           });
         } catch {
           responses.push({
@@ -198,6 +246,42 @@ export function useMicrophone(sessionId?: string) {
         apiKey: process.env.NEXT_PUBLIC_GOOGLE_GENERATIVE_AI_API_KEY!,
       });
 
+      // Fetch recent conversation history for context
+      let systemInstructionWithHistory = SYSTEM_PROMPT;
+      if (sessionId) {
+        try {
+          const historyRes = await fetch(`/api/sessions/${sessionId}`);
+          if (historyRes.ok) {
+            const historyData = await historyRes.json();
+            if (historyData?.messages?.length) {
+              const recentMessages = historyData.messages
+                .filter((m: any) => m.content !== "[voice video recommendation]")
+                .slice(-20);
+              if (recentMessages.length > 0) {
+                const sharedVideos: string[] = [];
+                if (historyData.videos) {
+                  const allVideoIds = historyData.messages.flatMap((m: any) => m.videoIds || []);
+                  for (const vid of allVideoIds) {
+                    const v = historyData.videos[vid];
+                    if (v) sharedVideos.push(`${v.title} (${v.youtubeId})`);
+                  }
+                }
+
+                systemInstructionWithHistory += `\n\n${HISTORY_SEPARATOR}\nRECENT CONVERSATION HISTORY\n${HISTORY_SEPARATOR}\n` +
+                  recentMessages.map((m: any) => `${m.role === "user" ? "User" : "You (Dr. Erik)"}: ${m.content}`).join("\n") +
+                  `\n${HISTORY_SEPARATOR}\nContinue the conversation naturally based on this history. The user may reference things discussed before. Do NOT re-greet the user if you already have conversation history.\n`;
+
+                if (sharedVideos.length > 0) {
+                  systemInstructionWithHistory += `\nAlready shared videos (do NOT recommend again):\n${sharedVideos.map(v => `- ${v}`).join("\n")}\n`;
+                }
+              }
+            }
+          }
+        } catch (e) {
+          console.error("Failed to fetch history for voice context:", e);
+        }
+      }
+
       const session = await ai.live.connect({
         model: "gemini-2.5-flash-native-audio-preview-12-2025",
         config: {
@@ -207,7 +291,7 @@ export function useMicrophone(sessionId?: string) {
               prebuiltVoiceConfig: { voiceName: "Charon" },
             },
           },
-          systemInstruction: SYSTEM_PROMPT,
+          systemInstruction: systemInstructionWithHistory,
           inputAudioTranscription: {},
           outputAudioTranscription: {},
           tools: [{
@@ -265,6 +349,7 @@ export function useMicrophone(sessionId?: string) {
             console.error("Live session error:", err.message || err);
           },
           onclose: () => {
+            flushPendingTranscript();
             sessionRef.current = null;
             cleanupMic();
 
@@ -411,6 +496,7 @@ export function useMicrophone(sessionId?: string) {
   }
 
   function disconnect() {
+    flushPendingTranscript();
     wasRecordingRef.current = false;
     intentionalCloseRef.current = true;
     stopRecording();

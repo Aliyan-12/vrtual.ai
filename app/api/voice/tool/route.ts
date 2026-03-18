@@ -109,17 +109,5 @@ export async function POST(req: Request) {
     }
   }
 
-  // Save an assistant message with videoIds for this session
-  if (userId && sessionId && savedVideoIds.length > 0) {
-    await prisma.message.create({
-      data: {
-        sessionId,
-        role: "assistant",
-        content: "[voice video recommendation]",
-        videoIds: savedVideoIds,
-      },
-    });
-  }
-
-  return Response.json(enriched);
+  return Response.json({ videos: enriched, savedVideoIds });
 }

@@ -239,6 +239,7 @@ function ChatInner({
     statusMessage,
     recording,
     transcripts,
+    transcriptMessageIds,
     videos: voiceVideos,
   } = useMicrophone(sessionId);
 
@@ -492,6 +493,7 @@ function ChatInner({
   function renderTranscript(idx: number) {
     const t = transcripts[idx];
     if (!t) return null;
+    const dbMessageId = transcriptMessageIds[idx];
     return (
       <div
         key={`transcript-${idx}`}
@@ -509,18 +511,45 @@ function ChatInner({
           </div>
           <div className="text-sm">{t.text}</div>
         </div>
+
+        {t.role === "assistant" && sessionId && dbMessageId && (
+          <div className="mt-1.5 flex items-center gap-1">
+            {renderFeedbackButtons(dbMessageId, "message")}
+          </div>
+        )}
       </div>
     );
+  }
+
+  function findVideoMessageId(videoTimelineIdx: number): string | undefined {
+    // Walk backwards through timeline to find the nearest assistant transcript with a DB message ID
+    const currentPos = timeline.findIndex(
+      (item, i) => item.type === "video" && (item as any).idx === videoTimelineIdx
+    );
+    if (currentPos < 0) return undefined;
+    for (let i = currentPos - 1; i >= 0; i--) {
+      const item = timeline[i];
+      if (item.type === "transcript") {
+        const t = transcripts[item.idx];
+        if (t?.role === "assistant" && transcriptMessageIds[item.idx]) {
+          return transcriptMessageIds[item.idx];
+        }
+      }
+    }
+    return undefined;
   }
 
   function renderVoiceVideo(idx: number) {
     const video = voiceVideos[idx];
     if (!video) return null;
-    // Voice videos don't have a DB messageId yet, so no feedback buttons
+    const dbMessageId = findVideoMessageId(idx);
     return (
       <div key={`voice-${video.id}-${idx}`} className="mb-3">
         <div className="inline-block max-w-[72ch] rounded-2xl bg-[var(--white)] px-4 py-2 ring-1 ring-black/10">
-          {renderVideoEmbedSimple(video)}
+          {dbMessageId && sessionId
+            ? renderVideoEmbed(dbMessageId, video)
+            : renderVideoEmbedSimple(video)
+          }
         </div>
       </div>
     );

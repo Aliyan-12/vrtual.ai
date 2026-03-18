@@ -46,6 +46,8 @@ export function useMicrophone(sessionId?: string) {
   const intentionalCloseRef = useRef(false);
   const pendingTranscriptRef = useRef<VoiceTranscript | null>(null);
   const pendingVideoIdsRef = useRef<string[]>([]);
+  const [transcriptMessageIds, setTranscriptMessageIds] = useState<Record<number, string>>({});
+  const transcriptSaveIndexRef = useRef(0);
 
   function showStatus(msg: string, duration = 3000) {
     setStatusMessage(msg);
@@ -91,10 +93,10 @@ export function useMicrophone(sessionId?: string) {
     playbackTimeRef.current = startTime + audioBuffer.duration;
   }
 
-  async function saveTranscriptToDB(role: "user" | "assistant", content: string, videoIds?: string[]) {
+  async function saveTranscriptToDB(role: "user" | "assistant", content: string, transcriptIdx: number, videoIds?: string[]) {
     if (!sessionId || !content.trim()) return;
     try {
-      await fetch(`/api/sessions/${sessionId}/messages`, {
+      const res = await fetch(`/api/sessions/${sessionId}/messages`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -103,6 +105,12 @@ export function useMicrophone(sessionId?: string) {
           ...(videoIds && videoIds.length > 0 ? { videoIds } : {}),
         }),
       });
+      if (res.ok) {
+        const saved = await res.json();
+        if (saved?.id) {
+          setTranscriptMessageIds(prev => ({ ...prev, [transcriptIdx]: saved.id }));
+        }
+      }
     } catch (e) {
       console.error("Failed to save voice transcript:", e);
     }
@@ -111,9 +119,10 @@ export function useMicrophone(sessionId?: string) {
   function flushPendingTranscript() {
     const pending = pendingTranscriptRef.current;
     if (pending && pending.text.trim()) {
-      // Attach any pending videoIds to assistant messages
+      const idx = transcriptSaveIndexRef.current;
+      transcriptSaveIndexRef.current++;
       const videoIds = pending.role === "assistant" ? pendingVideoIdsRef.current.splice(0) : undefined;
-      saveTranscriptToDB(pending.role, pending.text, videoIds);
+      saveTranscriptToDB(pending.role, pending.text, idx, videoIds);
     }
     pendingTranscriptRef.current = null;
   }
@@ -541,6 +550,7 @@ export function useMicrophone(sessionId?: string) {
     connectionStatus,
     statusMessage,
     transcripts,
+    transcriptMessageIds,
     videos,
   };
 }

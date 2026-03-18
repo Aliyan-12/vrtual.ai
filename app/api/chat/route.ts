@@ -39,12 +39,13 @@ export async function POST(req: Request) {
     }
   }
 
-  // Load previously shared videos for this session (from message videoIds)
+  // Load previously shared videos and feedback stats for this session
   let sharedVideos: string[] = [];
+  let feedbackSummary = "";
   if (userId && sessionId) {
     const sessionMessages = await prisma.message.findMany({
       where: { sessionId },
-      select: { videoIds: true },
+      select: { videoIds: true, feedback: true, likedVideoIds: true, dislikedVideoIds: true },
     });
     const allVideoIds = sessionMessages.flatMap(m => m.videoIds).filter(Boolean);
     if (allVideoIds.length > 0) {
@@ -54,35 +55,50 @@ export async function POST(req: Request) {
       });
       sharedVideos = videos.map(v => `${v.title} (${v.youtubeId})`);
     }
+
+    // Build feedback summary for model context
+    const msgLikes = sessionMessages.filter(m => m.feedback === "liked").length;
+    const msgDislikes = sessionMessages.filter(m => m.feedback === "disliked").length;
+    const vidLikes = sessionMessages.reduce((sum, m) => sum + m.likedVideoIds.length, 0);
+    const vidDislikes = sessionMessages.reduce((sum, m) => sum + m.dislikedVideoIds.length, 0);
+
+    if (msgLikes + msgDislikes + vidLikes + vidDislikes > 0) {
+      feedbackSummary = `\nUser feedback in this session: ${msgLikes} liked responses, ${msgDislikes} disliked responses, ${vidLikes} liked videos, ${vidDislikes} disliked videos. Adjust accordingly.\n`;
+    }
   }
 
-  const result = await ChatService.stream(messages, { sessionId, userId, sharedVideos });
+  const result = await ChatService.stream(messages, { sessionId, userId, sharedVideos, feedbackSummary });
 
   await result.text.then(async (fullText: string) => {
-    // Save assistant message to DB if authenticated, with videoIds
-    if (userId && sessionId && fullText) {
-      const videoIds = ChatService.lastSavedVideoIds;
+    const videoIds = ChatService.lastSavedVideoIds;
+    const hasContent = !!fullText;
+    const hasVideos = videoIds.length > 0;
+
+    // Save assistant message if there's text OR videos
+    if (userId && sessionId && (hasContent || hasVideos)) {
       await prisma.message.create({
         data: {
           sessionId,
           role: "assistant",
-          content: fullText,
+          content: fullText || "[video recommendation]",
           videoIds: videoIds,
         },
       });
     }
 
-    try {
-      const response = await convertTextToSpeech(fullText);
-      if (response?.filename && response?.mimeType) {
-        (await cookies()).set("audio_file", `${response.filename}.${response.mimeType}`, {
-          path: "/",
-          httpOnly: false,
-          maxAge: 3600,
-        });
+    if (hasContent) {
+      try {
+        const response = await convertTextToSpeech(fullText);
+        if (response?.filename && response?.mimeType) {
+          (await cookies()).set("audio_file", `${response.filename}.${response.mimeType}`, {
+            path: "/",
+            httpOnly: false,
+            maxAge: 3600,
+          });
+        }
+      } catch (err) {
+        console.error("TTS failed, continuing without audio:", err);
       }
-    } catch (err) {
-      console.error("TTS failed, continuing without audio:", err);
     }
   });
 

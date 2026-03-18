@@ -282,6 +282,14 @@ export function useMicrophone(sessionId?: string) {
                 if (sharedVideos.length > 0) {
                   systemInstructionWithHistory += `\nAlready shared videos (do NOT recommend again):\n${sharedVideos.map(v => `- ${v}`).join("\n")}\n`;
                 }
+
+                // Add feedback stats
+                if (historyData.feedbackStats) {
+                  const fs = historyData.feedbackStats;
+                  if (fs.messageLikes + fs.messageDislikes + fs.videoLikes + fs.videoDislikes > 0) {
+                    systemInstructionWithHistory += `\nUser feedback in this session: ${fs.messageLikes} liked responses, ${fs.messageDislikes} disliked responses, ${fs.videoLikes} liked videos, ${fs.videoDislikes} disliked videos. Adjust accordingly.\n`;
+                  }
+                }
               }
             }
           }

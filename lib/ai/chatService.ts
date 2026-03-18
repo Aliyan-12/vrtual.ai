@@ -13,13 +13,14 @@ interface StreamContext {
   sessionId?: string;
   userId?: string;
   sharedVideos?: string[];
+  feedbackSummary?: string;
 }
 
 export class ChatService {
     static lastSavedVideoIds: string[] = [];
 
     static async stream(messages: UIMessage[], context: StreamContext = {}) {
-        const { sessionId, userId, sharedVideos = [] } = context;
+        const { sessionId, userId, sharedVideos = [], feedbackSummary = "" } = context;
         const modelMessages = await convertToModelMessages(messages);
         ChatService.lastSavedVideoIds = [];
 
@@ -30,6 +31,9 @@ export class ChatService {
               ────────────────────────────────────────
               ${sharedVideos.map(v => `• ${v}`).join('\n')}
               `;
+        }
+        if (feedbackSummary) {
+            systemPrompt += feedbackSummary;
         }
 
         return streamText({

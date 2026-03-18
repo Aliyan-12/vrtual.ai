@@ -30,12 +30,15 @@ model ChatSession {
 }
 
 model Message {
-  id        String   @id @default(cuid())
-  sessionId String
-  role      String
-  content   String
-  videoIds  String[] @default([])
-  createdAt DateTime @default(now())
+  id               String   @id @default(cuid())
+  sessionId        String
+  role             String
+  content          String
+  videoIds         String[] @default([])
+  feedback         String?
+  likedVideoIds    String[] @default([])
+  dislikedVideoIds String[] @default([])
+  createdAt        DateTime @default(now())
 
   session ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 }
@@ -59,6 +62,9 @@ model Video {
   selectedSectionReason String?
   sharingContext        String   @default("")
   moodContext           String   @default("")
+
+  userLikeCount    Int @default(0)
+  userDislikeCount Int @default(0)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

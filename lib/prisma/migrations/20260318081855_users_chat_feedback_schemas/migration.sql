@@ -28,6 +28,9 @@ CREATE TABLE "Message" (
     "role" TEXT NOT NULL,
     "content" TEXT NOT NULL,
     "videoIds" TEXT[] DEFAULT ARRAY[]::TEXT[],
+    "feedback" TEXT,
+    "likedVideoIds" TEXT[] DEFAULT ARRAY[]::TEXT[],
+    "dislikedVideoIds" TEXT[] DEFAULT ARRAY[]::TEXT[],
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "Message_pkey" PRIMARY KEY ("id")
@@ -51,6 +54,8 @@ CREATE TABLE "Video" (
     "selectedSectionReason" TEXT,
     "sharingContext" TEXT NOT NULL DEFAULT '',
     "moodContext" TEXT NOT NULL DEFAULT '',
+    "userLikeCount" INTEGER NOT NULL DEFAULT 0,
+    "userDislikeCount" INTEGER NOT NULL DEFAULT 0,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 

@@ -33,8 +33,17 @@ export async function GET(
     videosMap = Object.fromEntries(videos.map(v => [v.id, v]));
   }
 
+  // Aggregate feedback stats
+  const feedbackStats = {
+    messageLikes: chatSession.messages.filter(m => m.feedback === "liked").length,
+    messageDislikes: chatSession.messages.filter(m => m.feedback === "disliked").length,
+    videoLikes: chatSession.messages.reduce((sum, m) => sum + m.likedVideoIds.length, 0),
+    videoDislikes: chatSession.messages.reduce((sum, m) => sum + m.dislikedVideoIds.length, 0),
+  };
+
   return Response.json({
     ...chatSession,
     videos: videosMap,
+    feedbackStats,
   });
 }

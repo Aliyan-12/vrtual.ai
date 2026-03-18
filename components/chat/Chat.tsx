@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useRef, useState, useMemo } from "react";
+import { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import dynamic from "next/dynamic";
 import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport } from 'ai';
@@ -16,7 +16,7 @@ const THINKING_WORDS = [
   "considering", "absorbing", "analyzing", "composing",
 ];
 
-const MOOD_ICONS = ["💬", "🩹", "🌊", "🤝"];
+const MOOD_ICONS = ["\u{1F4AC}", "\u{1FA79}", "\u{1F30A}", "\u{1F91D}"];
 const MOOD_STYLES = [
   { color: "from-blue-50 to-indigo-50", border: "border-blue-200 hover:border-blue-400" },
   { color: "from-rose-50 to-pink-50", border: "border-rose-200 hover:border-rose-400" },
@@ -39,6 +39,9 @@ type RestoredVideo = {
   selectedSection?: { startSeconds: number; reason: string };
 };
 
+// "liked" | "disliked" | null
+type FeedbackState = "liked" | "disliked" | null;
+
 interface ChatProps {
   sessionId?: string;
 }
@@ -51,6 +54,10 @@ export default function Chat({ sessionId }: ChatProps) {
   const [loadedMessages, setLoadedMessages] = useState<any[] | null>(null);
   const [loadedMessageVideos, setLoadedMessageVideos] = useState<Record<string, RestoredVideo[]>>({});
   const [loadingHistory, setLoadingHistory] = useState(!!sessionId);
+  const [initialFeedback, setInitialFeedback] = useState<{
+    messages: Record<string, FeedbackState>;
+    videos: Record<string, FeedbackState>; // key: "messageId:youtubeId"
+  }>({ messages: {}, videos: {} });
 
   useEffect(() => {
     if (authLoading) return;
@@ -77,8 +84,27 @@ export default function Chat({ sessionId }: ChatProps) {
         if (data?.messages?.length) {
           const videosMap = data.videos || {};
           const msgVideos: Record<string, RestoredVideo[]> = {};
+          const msgFeedback: Record<string, FeedbackState> = {};
+          const vidFeedback: Record<string, FeedbackState> = {};
 
           const msgs = data.messages.map((m: any) => {
+            // Load message feedback
+            if (m.feedback) {
+              msgFeedback[m.id] = m.feedback;
+            }
+
+            // Load video feedback
+            if (m.likedVideoIds?.length) {
+              for (const vid of m.likedVideoIds) {
+                vidFeedback[`${m.id}:${vid}`] = "liked";
+              }
+            }
+            if (m.dislikedVideoIds?.length) {
+              for (const vid of m.dislikedVideoIds) {
+                vidFeedback[`${m.id}:${vid}`] = "disliked";
+              }
+            }
+
             // Build video lookup for this message
             if (m.role === "assistant" && m.videoIds?.length > 0) {
               const vids = m.videoIds
@@ -108,6 +134,7 @@ export default function Chat({ sessionId }: ChatProps) {
             };
           });
 
+          setInitialFeedback({ messages: msgFeedback, videos: vidFeedback });
           setLoadedMessageVideos(msgVideos);
           setLoadedMessages(msgs);
         } else {
@@ -137,9 +164,26 @@ export default function Chat({ sessionId }: ChatProps) {
       sessionId={isAuthenticated ? sessionId : undefined}
       initialMessages={loadedMessages ?? undefined}
       messageVideos={loadedMessageVideos}
+      initialFeedback={initialFeedback}
       isAuthenticated={isAuthenticated}
       router={router}
     />
+  );
+}
+
+function ThumbUpIcon({ filled }: { filled: boolean }) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill={filled ? "currentColor" : "none"} stroke="currentColor" strokeWidth={2} className="w-3.5 h-3.5">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M6.633 10.25c.806 0 1.533-.446 2.031-1.08a9.041 9.041 0 0 1 2.861-2.4c.723-.384 1.35-.956 1.653-1.715a4.498 4.498 0 0 0 .322-1.672V2.75a.75.75 0 0 1 .75-.75 2.25 2.25 0 0 1 2.25 2.25c0 1.152-.26 2.243-.723 3.218-.266.558.107 1.282.725 1.282m0 0h3.126c1.026 0 1.945.694 2.054 1.715.045.422.068.85.068 1.285a11.95 11.95 0 0 1-2.649 7.521c-.388.482-.987.729-1.605.729H13.48c-.483 0-.964-.078-1.423-.23l-3.114-1.04a4.501 4.501 0 0 0-1.423-.23H3.75" />
+    </svg>
+  );
+}
+
+function ThumbDownIcon({ filled }: { filled: boolean }) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill={filled ? "currentColor" : "none"} stroke="currentColor" strokeWidth={2} className="w-3.5 h-3.5">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M17.367 13.75c-.806 0-1.533.446-2.031 1.08a9.041 9.041 0 0 1-2.861 2.4c-.723.384-1.35.956-1.653 1.715a4.498 4.498 0 0 0-.322 1.672v.633a.75.75 0 0 1-.75.75 2.25 2.25 0 0 1-2.25-2.25c0-1.152.26-2.243.723-3.218.266-.558-.107-1.282-.725-1.282m0 0H4.372c-1.026 0-1.945-.694-2.054-1.715A12.134 12.134 0 0 1 2.25 12c0-2.848.992-5.464 2.649-7.521C5.287 3.997 5.886 3.75 6.504 3.75h4.271c.483 0 .964.078 1.423.23l3.114 1.04a4.501 4.501 0 0 0 1.423.23h2.515" />
+    </svg>
   );
 }
 
@@ -147,12 +191,14 @@ function ChatInner({
   sessionId,
   initialMessages,
   messageVideos,
+  initialFeedback,
   isAuthenticated,
   router,
 }: {
   sessionId?: string;
   initialMessages?: any[];
   messageVideos: Record<string, RestoredVideo[]>;
+  initialFeedback: { messages: Record<string, FeedbackState>; videos: Record<string, FeedbackState> };
   isAuthenticated: boolean;
   router: ReturnType<typeof useRouter>;
 }) {
@@ -198,10 +244,13 @@ function ChatInner({
 
   const [text, setText] = useState("");
   const scrollRef = useRef<HTMLDivElement | null>(null);
-  const [likedVideos, setLikedVideos] = useState<Set<string>>(new Set());
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [loadingSuggestions, setLoadingSuggestions] = useState(true);
   const [thinkingWord, setThinkingWord] = useState(THINKING_WORDS[0]);
+
+  // Feedback state
+  const [messageFeedback, setMessageFeedback] = useState<Record<string, FeedbackState>>(initialFeedback.messages);
+  const [videoFeedback, setVideoFeedback] = useState<Record<string, FeedbackState>>(initialFeedback.videos);
 
   const [timeline, setTimeline] = useState<TimelineItem[]>([]);
   const addedMessageIds = useRef(new Set<string>());
@@ -258,14 +307,48 @@ function ChatInner({
       .finally(() => setLoadingSuggestions(false));
   }, []);
 
-  function toggleLike(videoId: string) {
-    setLikedVideos(prev => {
-      const next = new Set(prev);
-      if (next.has(videoId)) next.delete(videoId);
-      else next.add(videoId);
-      return next;
-    });
-  }
+  const submitMessageFeedback = useCallback(async (messageId: string, feedback: "liked" | "disliked") => {
+    if (!sessionId || messageFeedback[messageId]) return;
+
+    setMessageFeedback(prev => ({ ...prev, [messageId]: feedback }));
+
+    try {
+      const res = await fetch("/api/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId, messageId, type: "message", feedback }),
+      });
+      if (!res.ok) {
+        console.error("Feedback save failed:", res.status, await res.text());
+        setMessageFeedback(prev => ({ ...prev, [messageId]: null }));
+      }
+    } catch (e) {
+      console.error("Feedback network error:", e);
+      setMessageFeedback(prev => ({ ...prev, [messageId]: null }));
+    }
+  }, [sessionId, messageFeedback]);
+
+  const submitVideoFeedback = useCallback(async (messageId: string, youtubeId: string, feedback: "liked" | "disliked") => {
+    const key = `${messageId}:${youtubeId}`;
+    if (!sessionId || videoFeedback[key]) return;
+
+    setVideoFeedback(prev => ({ ...prev, [key]: feedback }));
+
+    try {
+      const res = await fetch("/api/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId, messageId, type: "video", feedback, youtubeId }),
+      });
+      if (!res.ok) {
+        console.error("Video feedback save failed:", res.status, await res.text());
+        setVideoFeedback(prev => ({ ...prev, [key]: null }));
+      }
+    } catch (e) {
+      console.error("Video feedback network error:", e);
+      setVideoFeedback(prev => ({ ...prev, [key]: null }));
+    }
+  }, [sessionId, videoFeedback]);
 
   async function send(override?: string) {
     const t = (override || text).trim();
@@ -311,8 +394,53 @@ function ChatInner({
     scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [timeline, isThinking]);
 
+  function renderFeedbackButtons(messageId: string, type: "message" | "video", youtubeId?: string) {
+    const key = type === "video" ? `${messageId}:${youtubeId}` : messageId;
+    const currentFeedback = type === "video" ? videoFeedback[key] : messageFeedback[key];
+    const isLocked = !!currentFeedback;
+
+    const handleFeedback = (feedback: "liked" | "disliked") => {
+      if (isLocked || !sessionId) return;
+      if (type === "video" && youtubeId) {
+        submitVideoFeedback(messageId, youtubeId, feedback);
+      } else {
+        submitMessageFeedback(messageId, feedback);
+      }
+    };
+
+    return (
+      <div className="flex items-center gap-1">
+        <button
+          onClick={() => handleFeedback("liked")}
+          disabled={isLocked}
+          className={`flex items-center justify-center w-7 h-7 rounded-full border transition-all duration-200 ${
+            currentFeedback === "liked"
+              ? "bg-emerald-50 border-emerald-300 text-emerald-600"
+              : isLocked
+                ? "bg-gray-50 border-gray-200 text-gray-300 cursor-not-allowed"
+                : "bg-white border-black/10 text-[var(--text-muted)] hover:border-emerald-300 hover:text-emerald-500 cursor-pointer"
+          }`}
+        >
+          <ThumbUpIcon filled={currentFeedback === "liked"} />
+        </button>
+        <button
+          onClick={() => handleFeedback("disliked")}
+          disabled={isLocked}
+          className={`flex items-center justify-center w-7 h-7 rounded-full border transition-all duration-200 ${
+            currentFeedback === "disliked"
+              ? "bg-red-50 border-red-300 text-red-500"
+              : isLocked
+                ? "bg-gray-50 border-gray-200 text-gray-300 cursor-not-allowed"
+                : "bg-white border-black/10 text-[var(--text-muted)] hover:border-red-300 hover:text-red-400 cursor-pointer"
+          }`}
+        >
+          <ThumbDownIcon filled={currentFeedback === "disliked"} />
+        </button>
+      </div>
+    );
+  }
+
   function renderTextMessage(message: typeof messages[number]) {
-    // Get restored videos for this message (from DB history)
     const restoredVideos = messageVideos[message.id];
 
     return (
@@ -341,20 +469,22 @@ function ChatInner({
             }
             if (part.type === 'tool-fetchVideos' && Array.isArray(part.output)) {
               return part.output?.map((video: { id: string, url: string, title?: string, description?: string, thumbnail?: string, selectedSection?: { startSeconds: number, reason: string }, startUrl?: string, embedUrl?: string }, j: number) => {
-                const videoKey = `${video.id}-${j}`;
-                const liked = likedVideos.has(videoKey);
-                return renderVideoEmbed(videoKey, video, liked);
+                return renderVideoEmbed(message.id, video);
               });
             }
           })}
 
-          {/* Render restored videos from DB history */}
-          {restoredVideos?.map((video, j) => {
-            const videoKey = `restored-${video.id}-${j}`;
-            const liked = likedVideos.has(videoKey);
-            return renderVideoEmbed(videoKey, video, liked);
+          {restoredVideos?.map((video) => {
+            return renderVideoEmbed(message.id, video);
           })}
         </div>
+
+        {/* Message feedback buttons for assistant messages */}
+        {message.role === "assistant" && sessionId && (
+          <div className="mt-1.5 flex items-center gap-1">
+            {renderFeedbackButtons(message.id, "message")}
+          </div>
+        )}
       </div>
     );
   }
@@ -386,21 +516,20 @@ function ChatInner({
   function renderVoiceVideo(idx: number) {
     const video = voiceVideos[idx];
     if (!video) return null;
-    const videoKey = `voice-${video.id}-${idx}`;
-    const liked = likedVideos.has(videoKey);
+    // Voice videos don't have a DB messageId yet, so no feedback buttons
     return (
-      <div key={videoKey} className="mb-3">
+      <div key={`voice-${video.id}-${idx}`} className="mb-3">
         <div className="inline-block max-w-[72ch] rounded-2xl bg-[var(--white)] px-4 py-2 ring-1 ring-black/10">
-          {renderVideoEmbed(videoKey, video, liked)}
+          {renderVideoEmbedSimple(video)}
         </div>
       </div>
     );
   }
 
-  function renderVideoEmbed(videoKey: string, video: { id: string, url: string, title?: string, embedUrl?: string }, liked: boolean) {
+  function renderVideoEmbedSimple(video: { id: string, url: string, title?: string, embedUrl?: string }) {
     return (
-      <div key={videoKey} className="my-3 flex items-start gap-2">
-        <div className="flex-1 overflow-hidden rounded-xl">
+      <div key={`simple-${video.id}`} className="my-3">
+        <div className="overflow-hidden rounded-xl">
           {video.embedUrl ? (
             <iframe width="100%" height="200px" src={video.embedUrl} />
           ) : (
@@ -408,29 +537,24 @@ function ChatInner({
           )}
           <div className="mt-1 text-sm text-[var(--text-muted)]">{video.title}</div>
         </div>
-        <button
-          onClick={() => toggleLike(videoKey)}
-          className={`mt-2 shrink-0 flex items-center justify-center w-9 h-9 rounded-full border transition-all duration-200 cursor-pointer ${
-            liked
-              ? "bg-red-50 border-red-300 text-red-500 scale-110"
-              : "bg-white border-black/10 text-[var(--text-muted)] hover:border-red-300 hover:text-red-400"
-          }`}
-        >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 24 24"
-            fill={liked ? "currentColor" : "none"}
-            stroke="currentColor"
-            strokeWidth={2}
-            className="w-4 h-4"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z"
-            />
-          </svg>
-        </button>
+      </div>
+    );
+  }
+
+  function renderVideoEmbed(messageId: string, video: { id: string, url: string, title?: string, embedUrl?: string }) {
+    return (
+      <div key={`${messageId}-${video.id}`} className="my-3">
+        <div className="overflow-hidden rounded-xl">
+          {video.embedUrl ? (
+            <iframe width="100%" height="200px" src={video.embedUrl} />
+          ) : (
+            <ReactPlayer src={video.url} width="100%" height="200px" controls />
+          )}
+          <div className="mt-1 flex items-center justify-between">
+            <div className="text-sm text-[var(--text-muted)]">{video.title}</div>
+            {sessionId && renderFeedbackButtons(messageId, "video", video.id)}
+          </div>
+        </div>
       </div>
     );
   }

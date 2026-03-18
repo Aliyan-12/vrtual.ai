@@ -158,19 +158,27 @@ export function useMicrophone(sessionId?: string) {
             }),
           });
           const result = await res.json();
-          const videos = result.videos || result;
-          setVideos(prev => [...prev, ...videos]);
 
-          // Track saved video IDs to attach to the next assistant transcript
-          if (result.savedVideoIds?.length) {
-            pendingVideoIdsRef.current.push(...result.savedVideoIds);
+          if (result.noResults) {
+            responses.push({
+              id: call.id,
+              name: call.name,
+              response: { noResults: true, message: result.message, suggestedTopic: result.suggestedTopic },
+            });
+          } else {
+            const videos = result.videos || [];
+            setVideos(prev => [...prev, ...videos]);
+
+            if (result.savedVideoIds?.length) {
+              pendingVideoIdsRef.current.push(...result.savedVideoIds);
+            }
+
+            responses.push({
+              id: call.id,
+              name: call.name,
+              response: { result: videos },
+            });
           }
-
-          responses.push({
-            id: call.id,
-            name: call.name,
-            response: { result: videos },
-          });
         } catch {
           responses.push({
             id: call.id,

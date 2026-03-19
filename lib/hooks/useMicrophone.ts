@@ -135,15 +135,18 @@ export function useMicrophone(sessionId?: string) {
   }
 
   async function saveTranscriptToDB(role: "user" | "assistant", content: string, transcriptIdx: number, videoIds?: string[]) {
-    if (!sessionId || !content.trim()) return;
+    if (!sessionId) return;
+    const hasContent = !!content.trim();
+    const hasVideos = videoIds && videoIds.length > 0;
+    if (!hasContent && !hasVideos) return;
     try {
       const res = await fetch(`/api/sessions/${sessionId}/messages`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           role,
-          content,
-          ...(videoIds && videoIds.length > 0 ? { videoIds } : {}),
+          content: content.trim() || "[video recommendation]",
+          ...(hasVideos ? { videoIds } : {}),
         }),
       });
       if (res.ok) {
@@ -159,10 +162,13 @@ export function useMicrophone(sessionId?: string) {
 
   function flushPendingTranscript() {
     const pending = pendingTranscriptRef.current;
-    if (pending && pending.text.trim()) {
+    const videoIds = pending?.role === "assistant" ? pendingVideoIdsRef.current.splice(0) : undefined;
+    const hasContent = pending && pending.text.trim();
+    const hasVideos = videoIds && videoIds.length > 0;
+
+    if (pending && (hasContent || hasVideos)) {
       const idx = transcriptSaveIndexRef.current;
       transcriptSaveIndexRef.current++;
-      const videoIds = pending.role === "assistant" ? pendingVideoIdsRef.current.splice(0) : undefined;
       saveTranscriptToDB(pending.role, pending.text, idx, videoIds);
     }
     pendingTranscriptRef.current = null;

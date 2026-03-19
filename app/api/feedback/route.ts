@@ -8,7 +8,7 @@ export async function POST(req: Request) {
     return new Response("Unauthorized", { status: 401 });
   }
 
-  const { sessionId, messageId, type, feedback, youtubeId } = await req.json();
+  const { sessionId, messageId, type, feedback, youtubeId, content } = await req.json();
 
   if (!sessionId || !messageId || !feedback || !["liked", "disliked"].includes(feedback)) {
     return new Response("Invalid request", { status: 400 });
@@ -22,12 +22,33 @@ export async function POST(req: Request) {
     return new Response("Session not found", { status: 404 });
   }
 
-  const message = await prisma.message.findFirst({
+  // Try to find message by ID first
+  let message = await prisma.message.findFirst({
     where: { id: messageId, sessionId },
   });
+
+  // Fallback: client-side useChat IDs don't match DB IDs for new messages.
+  // Look up by content + role instead.
+  if (!message && content) {
+    message = await prisma.message.findFirst({
+      where: { sessionId, role: "assistant", content },
+      orderBy: { createdAt: "desc" },
+    });
+  }
+
+  // Last resort: find the most recent unrated assistant message
+  if (!message) {
+    message = await prisma.message.findFirst({
+      where: { sessionId, role: "assistant", feedback: null },
+      orderBy: { createdAt: "desc" },
+    });
+  }
+
   if (!message) {
     return new Response("Message not found", { status: 404 });
   }
+
+  const dbMessageId = message.id;
 
   // Message feedback
   if (type === "message") {
@@ -36,7 +57,7 @@ export async function POST(req: Request) {
     }
 
     const updated = await prisma.message.update({
-      where: { id: messageId },
+      where: { id: dbMessageId },
       data: { feedback },
     });
     return Response.json(updated);
@@ -53,7 +74,7 @@ export async function POST(req: Request) {
 
     await prisma.$transaction([
       prisma.message.update({
-        where: { id: messageId },
+        where: { id: dbMessageId },
         data: { [field]: { push: youtubeId } },
       }),
       prisma.video.update({

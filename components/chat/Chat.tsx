@@ -308,7 +308,7 @@ function ChatInner({
       .finally(() => setLoadingSuggestions(false));
   }, []);
 
-  const submitMessageFeedback = useCallback(async (messageId: string, feedback: "liked" | "disliked") => {
+  const submitMessageFeedback = useCallback(async (messageId: string, feedback: "liked" | "disliked", content?: string) => {
     if (!sessionId || messageFeedback[messageId]) return;
 
     setMessageFeedback(prev => ({ ...prev, [messageId]: feedback }));
@@ -317,7 +317,7 @@ function ChatInner({
       const res = await fetch("/api/feedback", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId, messageId, type: "message", feedback }),
+        body: JSON.stringify({ sessionId, messageId, type: "message", feedback, content }),
       });
       if (!res.ok) {
         console.error("Feedback save failed:", res.status, await res.text());
@@ -329,7 +329,7 @@ function ChatInner({
     }
   }, [sessionId, messageFeedback]);
 
-  const submitVideoFeedback = useCallback(async (messageId: string, youtubeId: string, feedback: "liked" | "disliked") => {
+  const submitVideoFeedback = useCallback(async (messageId: string, youtubeId: string, feedback: "liked" | "disliked", content?: string) => {
     const key = `${messageId}:${youtubeId}`;
     if (!sessionId || videoFeedback[key]) return;
 
@@ -339,7 +339,7 @@ function ChatInner({
       const res = await fetch("/api/feedback", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId, messageId, type: "video", feedback, youtubeId }),
+        body: JSON.stringify({ sessionId, messageId, type: "video", feedback, youtubeId, content }),
       });
       if (!res.ok) {
         console.error("Video feedback save failed:", res.status, await res.text());
@@ -395,7 +395,7 @@ function ChatInner({
     scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [timeline, isThinking]);
 
-  function renderFeedbackButtons(messageId: string, type: "message" | "video", youtubeId?: string) {
+  function renderFeedbackButtons(messageId: string, type: "message" | "video", youtubeId?: string, content?: string) {
     const key = type === "video" ? `${messageId}:${youtubeId}` : messageId;
     const currentFeedback = type === "video" ? videoFeedback[key] : messageFeedback[key];
     const isLocked = !!currentFeedback;
@@ -403,9 +403,9 @@ function ChatInner({
     const handleFeedback = (feedback: "liked" | "disliked") => {
       if (isLocked || !sessionId) return;
       if (type === "video" && youtubeId) {
-        submitVideoFeedback(messageId, youtubeId, feedback);
+        submitVideoFeedback(messageId, youtubeId, feedback, content);
       } else {
-        submitMessageFeedback(messageId, feedback);
+        submitMessageFeedback(messageId, feedback, content);
       }
     };
 
@@ -483,7 +483,9 @@ function ChatInner({
         {/* Message feedback buttons for assistant messages */}
         {message.role === "assistant" && sessionId && (
           <div className="mt-1.5 flex items-center gap-1">
-            {renderFeedbackButtons(message.id, "message")}
+            {renderFeedbackButtons(message.id, "message", undefined,
+              message.parts.filter(p => p.type === "text").map(p => (p as any).text).join("")
+            )}
           </div>
         )}
       </div>
@@ -514,7 +516,7 @@ function ChatInner({
 
         {t.role === "assistant" && sessionId && dbMessageId && (
           <div className="mt-1.5 flex items-center gap-1">
-            {renderFeedbackButtons(dbMessageId, "message")}
+            {renderFeedbackButtons(dbMessageId, "message", undefined, t.text)}
           </div>
         )}
       </div>

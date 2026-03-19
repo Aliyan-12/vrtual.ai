@@ -69,38 +69,39 @@ export async function POST(req: Request) {
 
   const result = await ChatService.stream(messages, { sessionId, userId, sharedVideos, feedbackSummary });
 
-  await result.text.then(async (fullText: string) => {
-    const videoIds = ChatService.lastSavedVideoIds;
-    const hasContent = !!fullText;
-    const hasVideos = videoIds.length > 0;
+  // Collect text from ALL steps (multi-step tool use means text before + after tool call)
+  const steps = await result.steps;
+  const fullText = steps.map(s => s.text).filter(Boolean).join("\n\n");
+  const videoIds = ChatService.lastSavedVideoIds;
+  const hasContent = !!fullText;
+  const hasVideos = videoIds.length > 0;
 
-    // Save assistant message if there's text OR videos
-    if (userId && sessionId && (hasContent || hasVideos)) {
-      await prisma.message.create({
-        data: {
-          sessionId,
-          role: "assistant",
-          content: fullText || "[video recommendation]",
-          videoIds: videoIds,
-        },
-      });
-    }
+  // Save assistant message if there's text OR videos
+  if (userId && sessionId && (hasContent || hasVideos)) {
+    await prisma.message.create({
+      data: {
+        sessionId,
+        role: "assistant",
+        content: fullText || "[video recommendation]",
+        videoIds: videoIds,
+      },
+    });
+  }
 
-    if (hasContent) {
-      try {
-        const response = await convertTextToSpeech(fullText);
-        if (response?.filename && response?.mimeType) {
-          (await cookies()).set("audio_file", `${response.filename}.${response.mimeType}`, {
-            path: "/",
-            httpOnly: false,
-            maxAge: 3600,
-          });
-        }
-      } catch (err) {
-        console.error("TTS failed, continuing without audio:", err);
+  if (hasContent) {
+    try {
+      const response = await convertTextToSpeech(fullText);
+      if (response?.filename && response?.mimeType) {
+        (await cookies()).set("audio_file", `${response.filename}.${response.mimeType}`, {
+          path: "/",
+          httpOnly: false,
+          maxAge: 3600,
+        });
       }
+    } catch (err) {
+      console.error("TTS failed, continuing without audio:", err);
     }
-  });
+  }
 
   return result.toUIMessageStreamResponse();
 }

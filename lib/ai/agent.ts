@@ -1,7 +1,7 @@
 import { Experimental_Agent as Agent, stepCountIs, tool } from 'ai';
 import { groq } from "@ai-sdk/groq";
 import { z } from 'zod';
-import { searchYouTube } from "../tools/videoSearch";
+import { searchYouTube } from "@/lib/tools/videoSearch";
 import { generateText, Output } from 'ai';
 
 export const EmotionGuideAgent = new Agent({

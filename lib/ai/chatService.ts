@@ -2,11 +2,12 @@ import {
   streamText,
   UIMessage,
   convertToModelMessages,
-  tool
+  tool,
+  stepCountIs
 } from "ai";
 import { z } from 'zod';
 import { google } from "@ai-sdk/google";
-import { SYSTEM_PROMPT, FETCH_VIDEOS_DESCRIPTION } from './systemPrompt';
+import { SYSTEM_PROMPT, FETCH_VIDEOS_DESCRIPTION } from '@/lib/ai/systemPrompt';
 import { searchAndEnrichVideos } from '@/lib/tools/videoSearch';
 
 interface StreamContext {
@@ -40,6 +41,11 @@ export class ChatService {
           model: google("gemini-2.5-flash"),
           temperature: 0,
           system: systemPrompt,
+          // Allow up to 3 steps so the model can:
+          // Step 1: Call fetchVideos tool
+          // Step 2: See the tool result and generate text based on actual outcome
+          // This prevents "I found a video" when the tool returned nothing.
+          stopWhen: stepCountIs(3),
           tools: {
             fetchVideos: tool({
               description: FETCH_VIDEOS_DESCRIPTION,

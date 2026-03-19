@@ -222,7 +222,7 @@ function ChatInner({
         if (cookieValue) {
           const decoded = decodeURIComponent(cookieValue);
           const audio = new Audio(`/generated/${decoded}`);
-          audio.play();
+          audio.play().catch(() => {});
         }
       } catch (err) {
         console.error("Voice conversion error:", err);

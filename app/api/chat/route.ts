@@ -69,7 +69,6 @@ export async function POST(req: Request) {
     }
 
     // Build voice history context — DB messages that aren't in the useChat messages array
-    // (voice transcripts saved to DB won't be in the client-side messages)
     const dbMessages = sessionMessages
       .filter(m => m.content !== "[video recommendation]" && m.content !== "[voice video recommendation]")
       .slice(-20);
@@ -82,39 +81,47 @@ export async function POST(req: Request) {
 
   const result = await ChatService.stream(messages, { sessionId, userId, sharedVideos, feedbackSummary, voiceHistory });
 
-  // Collect text from ALL steps (multi-step tool use means text before + after tool call)
-  const steps = await result.steps;
-  const fullText = steps.map(s => s.text).filter(Boolean).join("\n\n");
-  const videoIds = ChatService.lastSavedVideoIds;
-  const hasContent = !!fullText;
-  const hasVideos = videoIds.length > 0;
+  // Start TTS as soon as text is ready (runs in parallel with streaming, not blocking).
+  await result.text.then(async (fullText: string) => {
+    if (fullText) {
+      try {
+        const response = await convertTextToSpeech(fullText);
+        if (response?.filename && response?.mimeType) {
+          (await cookies()).set("audio_file", `${response.filename}.${response.mimeType}`, {
+            path: "/",
+            httpOnly: false,
+            maxAge: 3600,
+          });
+        }
+      } catch (err) {
+        console.error("TTS failed, continuing without audio:", err);
+      }
+    }
+  });
 
-  // Save assistant message if there's text OR videos
-  if (userId && sessionId && (hasContent || hasVideos)) {
-    await prisma.message.create({
-      data: {
-        sessionId,
-        role: "assistant",
-        content: fullText || "[video recommendation]",
-        videoIds: videoIds,
-      },
-    });
-  }
-
-  if (hasContent) {
+  // Save assistant message to DB in background after all steps complete.
+  result.steps.then(async (steps) => {
     try {
-      const response = await convertTextToSpeech(fullText);
-      if (response?.filename && response?.mimeType) {
-        (await cookies()).set("audio_file", `${response.filename}.${response.mimeType}`, {
-          path: "/",
-          httpOnly: false,
-          maxAge: 3600,
+      const fullText = steps.map(s => s.text).filter(Boolean).join("\n\n");
+      const videoIds = ChatService.lastSavedVideoIds;
+      const hasContent = !!fullText;
+      const hasVideos = videoIds.length > 0;
+
+      if (userId && sessionId && (hasContent || hasVideos)) {
+        await prisma.message.create({
+          data: {
+            sessionId,
+            role: "assistant",
+            content: fullText || "[video recommendation]",
+            videoIds: videoIds,
+          },
         });
       }
     } catch (err) {
-      console.error("TTS failed, continuing without audio:", err);
+      console.error("Background save failed:", err);
     }
-  }
+  });
 
+  // Return streaming response immediately — no blocking
   return result.toUIMessageStreamResponse();
 }

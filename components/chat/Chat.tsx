@@ -283,7 +283,8 @@ function ChatInner({
     }
   }, [messages, transcripts, voiceVideos]);
 
-  const isThinking = status === "submitted" || (status === "streaming" && messages.length > 0 && messages[messages.length - 1].role === "user");
+  const isThinking = status === "submitted" || status === "streaming";
+  const isBusy = status !== "ready";
 
   useEffect(() => {
     if (!isThinking) return;
@@ -353,7 +354,7 @@ function ChatInner({
 
   async function send(override?: string) {
     const t = (override || text).trim();
-    if (!t) return;
+    if (!t || isBusy) return;
 
     if (isAuthenticated && !sessionId) {
       try {
@@ -626,7 +627,8 @@ function ChatInner({
                       <button
                         key={idx}
                         onClick={() => send(label)}
-                        className={`flex items-start gap-3 rounded-2xl border bg-gradient-to-br ${style.color} ${style.border} px-4 py-4 text-left text-sm text-[var(--text-dark)] transition-all duration-200 hover:shadow-md hover:-translate-y-0.5 cursor-pointer`}
+                        disabled={isBusy}
+                        className={`flex items-start gap-3 rounded-2xl border bg-gradient-to-br ${style.color} ${style.border} px-4 py-4 text-left text-sm text-[var(--text-dark)] transition-all duration-200 hover:shadow-md hover:-translate-y-0.5 cursor-pointer ${isBusy ? "opacity-50 cursor-not-allowed" : ""}`}
                       >
                         <span className="text-xl mt-0.5 shrink-0">{icon}</span>
                         <span className="leading-snug">{label}</span>
@@ -702,19 +704,21 @@ function ChatInner({
               <textarea
                 value={text}
                 onChange={(e) => setText(e.target.value)}
+                disabled={isBusy}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault();
                     send();
                   }
                 }}
-                placeholder="how are you feeling?"
+                placeholder={isBusy ? "waiting for response..." : "how are you feeling?"}
                 rows={1}
-                className="flex-1 min-h-12 max-h-36 resize-none rounded-2xl border border-black/10 bg-[var(--white)] px-4 py-3 text-sm text-[var(--text-dark)] outline-none placeholder:text-[var(--text-muted)] shadow-sm focus:ring-2 focus:ring-[var(--primary)]"
+                className={`flex-1 min-h-12 max-h-36 resize-none rounded-2xl border border-black/10 bg-[var(--white)] px-4 py-3 text-sm text-[var(--text-dark)] outline-none placeholder:text-[var(--text-muted)] shadow-sm focus:ring-2 focus:ring-[var(--primary)] ${isBusy ? "opacity-50 cursor-not-allowed" : ""}`}
               />
               <button
                 type="submit"
-                className="rounded-xl bg-[var(--primary)] px-4 py-2 text-sm text-white hover:bg-[var(--primary-hover)]"
+                disabled={isBusy}
+                className={`rounded-xl bg-[var(--primary)] px-4 py-2 text-sm text-white hover:bg-[var(--primary-hover)] ${isBusy ? "opacity-50 cursor-not-allowed" : ""}`}
               >
                 Send
               </button>

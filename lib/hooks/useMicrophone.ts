@@ -4,8 +4,9 @@ import { SYSTEM_PROMPT, FETCH_VIDEOS_DESCRIPTION } from "@/lib/ai/systemPrompt";
 
 const HISTORY_SEPARATOR = "────────────────────────────────────────";
 
-// How long after the last audio chunk to keep the mic muted (ms)
-const MIC_UNMUTE_DELAY = 600;
+// How long after the last audio chunk to keep the mic muted (ms).
+// Must be long enough for speaker reverb to fade before mic reopens.
+const MIC_UNMUTE_DELAY = 1200;
 
 export type VoiceTranscript = {
   role: "user" | "assistant";
@@ -556,12 +557,19 @@ export function useMicrophone(sessionId?: string) {
   }, []);
 
   async function startRecording() {
-    let session = sessionRef.current;
-    if (!session) {
-      setConnectionStatus("connecting");
-      showStatus("Connecting to voice...", 0);
-      session = await createSession();
+    // Always create a fresh session so it picks up the latest DB context
+    // (e.g. text messages sent since the last voice session)
+    if (sessionRef.current) {
+      try { sessionRef.current.close(); } catch {}
+      sessionRef.current = null;
+      connectingRef.current = false;
+      cleanupMic();
+      stopAllPlayback();
     }
+
+    setConnectionStatus("connecting");
+    showStatus("Connecting to voice...", 0);
+    const session = await createSession();
     if (!session) return;
 
     showStatus("Voice connected", 2000);

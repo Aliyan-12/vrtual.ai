@@ -15,23 +15,33 @@ interface StreamContext {
   userId?: string;
   sharedVideos?: string[];
   feedbackSummary?: string;
+  voiceHistory?: string;
 }
 
 export class ChatService {
     static lastSavedVideoIds: string[] = [];
 
     static async stream(messages: UIMessage[], context: StreamContext = {}) {
-        const { sessionId, userId, sharedVideos = [], feedbackSummary = "" } = context;
+        const { sessionId, userId, sharedVideos = [], feedbackSummary = "", voiceHistory = "" } = context;
         const modelMessages = await convertToModelMessages(messages);
         ChatService.lastSavedVideoIds = [];
 
         let systemPrompt = SYSTEM_PROMPT;
-        if (sharedVideos.length > 0) {
+        if (voiceHistory) {
             systemPrompt += `\n\n────────────────────────────────────────
-              ALREADY SHARED VIDEOS (DO NOT RECOMMEND AGAIN)
-              ────────────────────────────────────────
-              ${sharedVideos.map(v => `• ${v}`).join('\n')}
-              `;
+FULL SESSION HISTORY (includes voice conversation messages)
+────────────────────────────────────────
+${voiceHistory}
+────────────────────────────────────────
+The above includes all messages in this session (text + voice). The user may reference things discussed in voice mode. Continue naturally.
+`;
+        }
+        if (sharedVideos.length > 0) {
+            systemPrompt += `\n────────────────────────────────────────
+ALREADY SHARED VIDEOS (DO NOT RECOMMEND AGAIN)
+────────────────────────────────────────
+${sharedVideos.map(v => `• ${v}`).join('\n')}
+`;
         }
         if (feedbackSummary) {
             systemPrompt += feedbackSummary;

@@ -39,13 +39,15 @@ export async function POST(req: Request) {
     }
   }
 
-  // Load previously shared videos and feedback stats for this session
+  // Load previously shared videos, feedback stats, and voice history for this session
   let sharedVideos: string[] = [];
   let feedbackSummary = "";
+  let voiceHistory = "";
   if (userId && sessionId) {
     const sessionMessages = await prisma.message.findMany({
       where: { sessionId },
-      select: { videoIds: true, feedback: true, likedVideoIds: true, dislikedVideoIds: true },
+      select: { role: true, content: true, videoIds: true, feedback: true, likedVideoIds: true, dislikedVideoIds: true },
+      orderBy: { createdAt: "asc" },
     });
     const allVideoIds = sessionMessages.flatMap(m => m.videoIds).filter(Boolean);
     if (allVideoIds.length > 0) {
@@ -65,9 +67,20 @@ export async function POST(req: Request) {
     if (msgLikes + msgDislikes + vidLikes + vidDislikes > 0) {
       feedbackSummary = `\nUser feedback in this session: ${msgLikes} liked responses, ${msgDislikes} disliked responses, ${vidLikes} liked videos, ${vidDislikes} disliked videos. Adjust accordingly.\n`;
     }
+
+    // Build voice history context — DB messages that aren't in the useChat messages array
+    // (voice transcripts saved to DB won't be in the client-side messages)
+    const dbMessages = sessionMessages
+      .filter(m => m.content !== "[video recommendation]" && m.content !== "[voice video recommendation]")
+      .slice(-20);
+    if (dbMessages.length > 0) {
+      voiceHistory = dbMessages
+        .map(m => `${m.role === "user" ? "User" : "You (Dr. Erik)"}: ${m.content}`)
+        .join("\n");
+    }
   }
 
-  const result = await ChatService.stream(messages, { sessionId, userId, sharedVideos, feedbackSummary });
+  const result = await ChatService.stream(messages, { sessionId, userId, sharedVideos, feedbackSummary, voiceHistory });
 
   // Collect text from ALL steps (multi-step tool use means text before + after tool call)
   const steps = await result.steps;

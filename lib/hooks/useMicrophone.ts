@@ -4,6 +4,9 @@ import { SYSTEM_PROMPT, FETCH_VIDEOS_DESCRIPTION } from "@/lib/ai/systemPrompt";
 
 const HISTORY_SEPARATOR = "────────────────────────────────────────";
 
+// How long after the last audio chunk to keep the mic muted (ms)
+const MIC_UNMUTE_DELAY = 600;
+
 export type VoiceTranscript = {
   role: "user" | "assistant";
   text: string;
@@ -49,6 +52,12 @@ export function useMicrophone(sessionId?: string) {
   const [transcriptMessageIds, setTranscriptMessageIds] = useState<Record<number, string>>({});
   const transcriptSaveIndexRef = useRef(0);
 
+  // Echo suppression: mute mic while model is speaking
+  const modelSpeakingRef = useRef(false);
+  const unmuteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Track active playback sources so we can stop them on interruption
+  const activeSourcesRef = useRef<AudioBufferSourceNode[]>([]);
+
   function showStatus(msg: string, duration = 3000) {
     setStatusMessage(msg);
     if (duration > 0) {
@@ -66,7 +75,26 @@ export function useMicrophone(sessionId?: string) {
     return playbackCtxRef.current;
   }
 
+  function stopAllPlayback() {
+    for (const src of activeSourcesRef.current) {
+      try { src.stop(); } catch { /* already stopped */ }
+    }
+    activeSourcesRef.current = [];
+    playbackTimeRef.current = 0;
+    modelSpeakingRef.current = false;
+    if (unmuteTimerRef.current) {
+      clearTimeout(unmuteTimerRef.current);
+      unmuteTimerRef.current = null;
+    }
+  }
+
   function playPcmChunk(base64Data: string) {
+    // Mark model as speaking — this mutes mic input
+    modelSpeakingRef.current = true;
+    if (unmuteTimerRef.current) {
+      clearTimeout(unmuteTimerRef.current);
+    }
+
     const ctx = getPlaybackCtx();
     const raw = atob(base64Data);
     const bytes = new Uint8Array(raw.length);
@@ -91,6 +119,19 @@ export function useMicrophone(sessionId?: string) {
     const startTime = Math.max(now, playbackTimeRef.current);
     source.start(startTime);
     playbackTimeRef.current = startTime + audioBuffer.duration;
+
+    // Track active source for interruption
+    activeSourcesRef.current.push(source);
+    source.onended = () => {
+      activeSourcesRef.current = activeSourcesRef.current.filter(s => s !== source);
+    };
+
+    // Schedule unmute after playback finishes + delay
+    const playbackEndMs = (playbackTimeRef.current - now) * 1000 + MIC_UNMUTE_DELAY;
+    unmuteTimerRef.current = setTimeout(() => {
+      modelSpeakingRef.current = false;
+      unmuteTimerRef.current = null;
+    }, playbackEndMs);
   }
 
   async function saveTranscriptToDB(role: "user" | "assistant", content: string, transcriptIdx: number, videoIds?: string[]) {
@@ -272,7 +313,7 @@ export function useMicrophone(sessionId?: string) {
             const historyData = await historyRes.json();
             if (historyData?.messages?.length) {
               const recentMessages = historyData.messages
-                .filter((m: any) => m.content !== "[voice video recommendation]")
+                .filter((m: any) => m.content !== "[voice video recommendation]" && m.content !== "[video recommendation]")
                 .slice(-20);
               if (recentMessages.length > 0) {
                 const sharedVideos: string[] = [];
@@ -362,8 +403,9 @@ export function useMicrophone(sessionId?: string) {
               appendTranscript("assistant", msg.serverContent.outputTranscription.text);
             }
 
+            // Model was interrupted by user — stop all queued audio immediately
             if (msg.serverContent?.interrupted) {
-              playbackTimeRef.current = 0;
+              stopAllPlayback();
             }
 
             if (msg.toolCall?.functionCalls && sessionRef.current) {
@@ -377,6 +419,7 @@ export function useMicrophone(sessionId?: string) {
             flushPendingTranscript();
             sessionRef.current = null;
             cleanupMic();
+            stopAllPlayback();
 
             if (intentionalCloseRef.current) {
               intentionalCloseRef.current = false;
@@ -416,6 +459,7 @@ export function useMicrophone(sessionId?: string) {
           channelCount: 1,
           echoCancellation: true,
           noiseSuppression: true,
+          autoGainControl: true,
         },
       });
       streamRef.current = micStream;
@@ -435,6 +479,8 @@ export function useMicrophone(sessionId?: string) {
 
         workletNode.port.onmessage = (e: MessageEvent) => {
           if (!sessionRef.current) return;
+          // Skip sending mic data while model is speaking (echo suppression)
+          if (modelSpeakingRef.current) return;
           const pcmBuffer: ArrayBuffer = e.data;
           sendPcmData(pcmBuffer, actualRate);
         };
@@ -449,6 +495,8 @@ export function useMicrophone(sessionId?: string) {
         const scriptNode = audioCtx.createScriptProcessor(4096, 1, 1);
         scriptNode.onaudioprocess = (e: AudioProcessingEvent) => {
           if (!sessionRef.current) return;
+          // Skip sending mic data while model is speaking (echo suppression)
+          if (modelSpeakingRef.current) return;
           const float32 = e.inputBuffer.getChannelData(0);
           const int16 = new Int16Array(float32.length);
           for (let i = 0; i < float32.length; i++) {
@@ -525,6 +573,7 @@ export function useMicrophone(sessionId?: string) {
     wasRecordingRef.current = false;
     intentionalCloseRef.current = true;
     stopRecording();
+    stopAllPlayback();
     if (sessionRef.current) {
       try {
         sessionRef.current.close();

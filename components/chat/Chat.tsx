@@ -221,7 +221,7 @@ function ChatInner({
 
         if (cookieValue) {
           const decoded = decodeURIComponent(cookieValue);
-          const audio = new Audio(`/generated/${decoded}`);
+          const audio = new Audio(`/api/audio?file=${encodeURIComponent(decoded)}`);
           audio.play().catch(() => {});
         }
       } catch (err) {

@@ -8,6 +8,8 @@ export async function POST(req: Request) {
 
   const result = await ChatService.stream(messages);
 
+  // Run TTS in background — do NOT await, so streaming response returns immediately.
+  // This prevents 504 timeout on production servers.
   await result.text.then(async (fullText: string) => {
     try {
       const response = await convertTextToSpeech(fullText);

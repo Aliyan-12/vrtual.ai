@@ -55,4 +55,4 @@ TONE
 • English only
 `.trim();
 
-export const FETCH_VIDEOS_DESCRIPTION = "Search YouTube for calm, helpful videos from Erik Fisher's channel. ONLY use this tool after you have clearly understood the user's mood through conversation. NEVER use on greetings or vague messages. This is the ONLY way to share videos — never write URLs or video data in text.";
+export const FETCH_VIDEOS_DESCRIPTION = "Search YouTube for calm, helpful videos from Erik Fisher's channel. ONLY use this tool after you have clearly understood the user's mood through conversation. NEVER use on greetings or vague messages. This is the ONLY way to share videos — never write URLs or video data in text. IMPORTANT: The 'query' must be a short YouTube search query (2-5 words), NOT a sentence. If user asks for a song, include 'song' in the query. Examples: 'song love healing', 'overcome anxiety', 'relationship repair', 'self worth song'.";

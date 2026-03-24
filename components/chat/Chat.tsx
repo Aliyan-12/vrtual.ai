@@ -13,7 +13,7 @@ const THINKING_WORDS = [
   "considering", "absorbing", "analyzing", "composing",
 ];
 
-const MOOD_ICONS = ["💬", "🩹", "🌊", "🤝"];
+const MOOD_ICONS = ["\u{1F4AC}", "\u{1FA79}", "\u{1F30A}", "\u{1F91D}"];
 const MOOD_STYLES = [
   { color: "from-blue-50 to-indigo-50", border: "border-blue-200 hover:border-blue-400" },
   { color: "from-rose-50 to-pink-50", border: "border-rose-200 hover:border-rose-400" },
@@ -37,8 +37,8 @@ export default function Chat() {
 
         if (cookieValue) {
           const decoded = decodeURIComponent(cookieValue);
-          const audio = new Audio(`/generated/${decoded}`);
-          audio.play();
+          const audio = new Audio(`/api/audio?file=${encodeURIComponent(decoded)}`);
+          audio.play().catch(() => {});
         }
       } catch (err) {
         console.error("Voice conversion error:", err);
@@ -70,6 +70,9 @@ export default function Chat() {
   const addedTranscriptCount = useRef(0);
   const addedVideoCount = useRef(0);
 
+  const isThinking = status === "submitted" || status === "streaming";
+  const isBusy = status !== "ready";
+
   useEffect(() => {
     const newItems: TimelineItem[] = [];
 
@@ -94,8 +97,6 @@ export default function Chat() {
       setTimeline(prev => [...prev, ...newItems]);
     }
   }, [messages, transcripts, voiceVideos]);
-
-  const isThinking = status === "submitted" || (status === "streaming" && messages.length > 0 && messages[messages.length - 1].role === "user");
 
   useEffect(() => {
     if (!isThinking) return;
@@ -131,7 +132,7 @@ export default function Chat() {
 
   function send(override?: string) {
     const t = (override || text).trim();
-    if (!t) return;
+    if (!t || isBusy) return;
     sendMessage({ text: t });
     setText("");
   }
@@ -294,7 +295,8 @@ export default function Chat() {
                       <button
                         key={idx}
                         onClick={() => send(label)}
-                        className={`flex items-start gap-3 rounded-2xl border bg-gradient-to-br ${style.color} ${style.border} px-4 py-4 text-left text-sm text-[var(--text-dark)] transition-all duration-200 hover:shadow-md hover:-translate-y-0.5 cursor-pointer`}
+                        disabled={isBusy}
+                        className={`flex items-start gap-3 rounded-2xl border bg-gradient-to-br ${style.color} ${style.border} px-4 py-4 text-left text-sm text-[var(--text-dark)] transition-all duration-200 hover:shadow-md hover:-translate-y-0.5 cursor-pointer ${isBusy ? "opacity-50 cursor-not-allowed" : ""}`}
                       >
                         <span className="text-xl mt-0.5 shrink-0">{icon}</span>
                         <span className="leading-snug">{label}</span>
@@ -370,19 +372,21 @@ export default function Chat() {
               <textarea
                 value={text}
                 onChange={(e) => setText(e.target.value)}
+                disabled={isBusy}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault();
                     send();
                   }
                 }}
-                placeholder="how are you feeling?"
+                placeholder={isBusy ? "waiting for response..." : "how are you feeling?"}
                 rows={1}
-                className="flex-1 min-h-12 max-h-36 resize-none rounded-2xl border border-black/10 bg-[var(--white)] px-4 py-3 text-sm text-[var(--text-dark)] outline-none placeholder:text-[var(--text-muted)] shadow-sm focus:ring-2 focus:ring-[var(--primary)]"
+                className={`flex-1 min-h-12 max-h-36 resize-none rounded-2xl border border-black/10 bg-[var(--white)] px-4 py-3 text-sm text-[var(--text-dark)] outline-none placeholder:text-[var(--text-muted)] shadow-sm focus:ring-2 focus:ring-[var(--primary)] ${isBusy ? "opacity-50 cursor-not-allowed" : ""}`}
               />
               <button
                 type="submit"
-                className="rounded-xl bg-[var(--primary)] px-4 py-2 text-sm text-white hover:bg-[var(--primary-hover)]"
+                disabled={isBusy}
+                className={`rounded-xl bg-[var(--primary)] px-4 py-2 text-sm text-white hover:bg-[var(--primary-hover)] ${isBusy ? "opacity-50 cursor-not-allowed" : ""}`}
               >
                 Send
               </button>

@@ -1,95 +1,29 @@
 import {
   streamText,
-  generateText,
   UIMessage,
   convertToModelMessages,
-  Output,
   tool
 } from "ai";
 import { z } from 'zod';
 import { google } from "@ai-sdk/google";
-import { searchYouTube, fetchFullDescription } from '../tools/youtube';
-import { extractTimestamps } from '../tools/timestamp';
 import { SYSTEM_PROMPT, FETCH_VIDEOS_DESCRIPTION } from './systemPrompt';
+import { VideoService } from './videoService';
 
 export class ChatService {
     static async stream(messages: UIMessage[]) {
         const modelMessages = await convertToModelMessages(messages);
         return streamText({
           model: google("gemini-2.5-flash"),
-          temperature: 0,
           system: SYSTEM_PROMPT,
           tools: {
             fetchVideos: tool({
               description: FETCH_VIDEOS_DESCRIPTION,
               inputSchema: z.object({
-                query: z.string().describe("Search query for Erik Fisher channel"),
-                userContext: z.string().describe("User's emotional context based on conversation so far"),
+                query: z.string().describe("Short YouTube search query, 2-5 words max. If user wants a song include 'song'. Examples: 'song love healing', 'overcome anxiety', 'self worth'. Do NOT include channel name."),
+                userContext: z.string().describe("User's emotional context and what they specifically asked for (song, advice, guidance, etc.)"),
               }),
               execute: async ({ query, userContext }) => {
-                let videos = await searchYouTube(query);
-
-                if (videos.length === 0) {
-                  const fallbackQueries = [
-                    `${query} life reuse or compost By Dr Erik Fisher AKA DR E`,
-                    `${query} love lessons By Dr Erik Fisher AKA DR E`,
-                    `${query} Emotions Aren't Random — They're a Formula By Dr Erik Fisher AKA DR E`
-                  ];
-                  for (const q of fallbackQueries) {
-                    videos = await searchYouTube(q, 1);
-                    if (videos.length > 0) break;
-                  }
-                }
-
-                if (videos.length === 0) {
-                  videos = await searchYouTube("life lessons");
-                }
-
-                const enriched = [];
-
-                for (const video of videos) {
-                  const fullDescription = await fetchFullDescription(video.id);
-                  const sections = extractTimestamps(fullDescription);
-
-                  if (!sections.length) {
-                    enriched.push(video);
-                    continue;
-                  }
-
-                  const output = await generateText({
-                      model: google("gemini-2.5-flash"),
-                      temperature: 0,
-                      experimental_output: Output.object({
-                        schema: z.object({
-                          startSeconds: z.number().describe('The timestamp selected in seconds.'),
-                          reason: z.string().describe('Short Reason for selecting this timestamp.')
-                        })
-                      }),
-                      prompt: `
-                          User emotion/context:
-                          "${userContext}"
-
-                          Video title:
-                          "${video.title}"
-
-                          Video sections:
-                          ${sections.map(s => `- ${s.time} (${s.seconds}s): ${s.label ?? ""}`).join("\n")}
-
-                          Choose the ONE section that best matches the user's emotional need.
-                      `,
-                  });
-
-                  const startSeconds = JSON.parse(output.text).startSeconds;
-
-                  enriched.push({
-                    ...video,
-                    selectedSection: JSON.parse(output.text),
-                    startUrl: `${video.url}&t=${startSeconds}s`,
-                    embedUrl: `https://www.youtube.com/embed/${video.id}?start=${startSeconds}`,
-                  });
-                }
-
-                return enriched;
+                return await VideoService.searchAndEnrich(query, userContext, "[fetchVideos]");
               },
             }),
           },

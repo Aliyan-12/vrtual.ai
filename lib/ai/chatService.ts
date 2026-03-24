@@ -2,7 +2,8 @@ import {
   streamText,
   UIMessage,
   convertToModelMessages,
-  tool
+  tool,
+  stepCountIs
 } from "ai";
 import { z } from 'zod';
 import { google } from "@ai-sdk/google";
@@ -27,6 +28,9 @@ export class ChatService {
               },
             }),
           },
+          // Allow multi-step so model calls tool first, sees result, then responds.
+          // Prevents "I found a video" when the tool returned nothing.
+          stopWhen: stepCountIs(3),
           messages: modelMessages,
           maxRetries: 3
         });

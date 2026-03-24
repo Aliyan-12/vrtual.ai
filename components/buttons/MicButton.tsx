@@ -1,6 +1,6 @@
 "use client";
 
-import { ConnectionStatus } from "@/lib/hooks/useMicrophone";
+import type { ConnectionStatus } from "@/types";
 
 function playClickSound() {
   try {

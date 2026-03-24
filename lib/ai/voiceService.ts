@@ -3,12 +3,6 @@ import mime from 'mime';
 import { saveBinaryFile, convertToWav } from "../utils/helper";
 import { now } from "next-auth/client/_utils";
 
-export interface WavConversionOptions {
-  numChannels : number,
-  sampleRate: number,
-  bitsPerSample: number
-}
-
 export class VoiceService {
     static async textToSpeechStream(model: string, text: string) {
       const ai = new GoogleGenAI({

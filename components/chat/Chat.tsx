@@ -2,8 +2,9 @@
 import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { useChat } from '@ai-sdk/react';
-import { useMicrophone, VoiceVideo, ConnectionStatus } from '@/lib/hooks/useMicrophone';
+import { useMicrophone } from '@/lib/hooks/useMicrophone';
 import MicButton from '@/components/buttons/MicButton';
+import type { TimelineItem } from "@/types";
 
 const ReactPlayer = dynamic(() => import("react-player"), { ssr: false });
 
@@ -21,10 +22,6 @@ const MOOD_STYLES = [
   { color: "from-emerald-50 to-teal-50", border: "border-emerald-200 hover:border-emerald-400" },
 ];
 
-type TimelineItem =
-  | { type: "message"; id: string }
-  | { type: "transcript"; idx: number }
-  | { type: "video"; idx: number };
 
 export default function Chat() {
   const { messages, sendMessage, status } = useChat({

@@ -3,25 +3,11 @@ import { google } from "@ai-sdk/google";
 import { z } from "zod";
 import { searchYouTube, fetchVideoDetails } from "../tools/youtube";
 import { extractTimestamps } from "../tools/timestamp";
+import type { EnrichedVideo } from "@/types";
 
 const MAX_RETRIES = 3;
 
-export interface EnrichedVideo {
-  id: string;
-  title: string;
-  description: string;
-  thumbnail: string;
-  url: string;
-  category: string;
-  tags: string[];
-  fullDescription: string;
-  selectedSection?: { startSeconds: number; reason: string };
-  startUrl?: string;
-  embedUrl?: string;
-}
-
 // ── Prompt builders ─────────────────────────────────────────
-
 function buildRetryPrompt(originalQuery: string, userContext: string, attempt: number): string {
   return `You are helping search a YouTube channel by Dr. Erik Fisher (psychologist, emotional wellness, songs, personal growth).
 
@@ -82,7 +68,6 @@ Choose the ONE section that best matches the user's emotional need. Consider the
 }
 
 // ── VideoService ────────────────────────────────────────────
-
 export class VideoService {
   /**
    * Searches, filters by relevance, and enriches videos from Dr. Erik Fisher's channel.

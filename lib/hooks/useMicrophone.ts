@@ -1,29 +1,11 @@
 import { useState, useRef, useCallback } from "react";
 import { GoogleGenAI, Modality, Session, Type } from "@google/genai";
 import { SYSTEM_PROMPT, FETCH_VIDEOS_DESCRIPTION } from "@/lib/ai/systemPrompt";
+import type { VoiceTranscript, VoiceVideo, ConnectionStatus } from "@/types";
 
 // How long after the last audio chunk to keep the mic muted (ms).
 // Must be long enough for speaker reverb to fade before mic reopens.
 const MIC_UNMUTE_DELAY = 1200;
-
-export type VoiceTranscript = {
-  role: "user" | "assistant";
-  text: string;
-};
-
-export type VoiceVideo = {
-  id: string;
-  url: string;
-  title?: string;
-  embedUrl?: string;
-};
-
-export type ConnectionStatus =
-  | "disconnected"
-  | "connecting"
-  | "connected"
-  | "reconnecting"
-  | "error";
 
 const MAX_RECONNECT_ATTEMPTS = 3;
 const RECONNECT_DELAY = 1500;

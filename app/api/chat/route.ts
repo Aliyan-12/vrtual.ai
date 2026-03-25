@@ -8,9 +8,7 @@ export async function POST(req: Request) {
 
   const result = await ChatService.stream(messages);
 
-  // Run TTS in background using all steps text (multi-step collects text from before + after tool calls).
-  // Do NOT await — return streaming response immediately to avoid 504 timeout.
-  result.steps.then(async (steps) => {
+  await result.steps.then(async (steps) => {
     try {
       const fullText = steps.map(s => s.text).filter(Boolean).join("\n\n");
       if (!fullText) return;

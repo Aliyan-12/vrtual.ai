@@ -7,6 +7,7 @@ import MicButton from '@/components/buttons/MicButton';
 import type { TimelineItem } from "@/types";
 
 const ReactPlayer = dynamic(() => import("react-player"), { ssr: false });
+const ChatAvatar = dynamic(() => import("@/components/chat/ChatAvatar"), { ssr: false });
 
 const THINKING_WORDS = [
   "listening", "feeling", "reflecting", "understanding",
@@ -24,6 +25,9 @@ const MOOD_STYLES = [
 
 
 export default function Chat() {
+  const [avatarSpeaking, setAvatarSpeaking] = useState(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
   const { messages, sendMessage, status } = useChat({
     onFinish: async () => {
       try {
@@ -35,10 +39,15 @@ export default function Chat() {
         if (cookieValue) {
           const decoded = decodeURIComponent(cookieValue);
           const audio = new Audio(`/api/audio?file=${encodeURIComponent(decoded)}`);
-          audio.play().catch(() => {});
+          audioRef.current = audio;
+          setAvatarSpeaking(true);
+          audio.onended = () => setAvatarSpeaking(false);
+          audio.onerror = () => setAvatarSpeaking(false);
+          audio.play().catch(() => setAvatarSpeaking(false));
         }
       } catch (err) {
         console.error("Voice conversion error:", err);
+        setAvatarSpeaking(false);
       }
     }
   });
@@ -54,6 +63,14 @@ export default function Chat() {
     transcripts,
     videos: voiceVideos,
   } = useMicrophone();
+
+  // Voice mode: detect when model is speaking
+  useEffect(() => {
+    if (recording && transcripts.length > 0) {
+      const last = transcripts[transcripts.length - 1];
+      setAvatarSpeaking(last.role === "assistant");
+    }
+  }, [transcripts, recording]);
 
   const [text, setText] = useState("");
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -265,7 +282,9 @@ export default function Chat() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[var(--primary-light)] via-[var(--white)] to-[var(--white)] text-[var(--text-dark)]">
-      <div className="mx-auto flex min-h-screen w-full max-w-3xl flex-col px-4 sm:px-6 py-6 sm:py-8">
+      <div className="mx-auto flex min-h-screen w-full max-w-6xl px-4 sm:px-6 py-6 sm:py-8">
+        {/* Chat area */}
+        <div className="flex-1 flex flex-col max-w-3xl">
         <div
           ref={scrollRef}
           className="flex-1 overflow-y-auto pb-20"
@@ -390,6 +409,13 @@ export default function Chat() {
             </form>
           </div>
         </div>
+        </div>
+
+        {/* 3D Avatar — right side, sticky, hidden on mobile */}
+        <div className="hidden lg:flex flex-col items-center justify-start ml-4 w-72 sticky top-20 self-start">
+          <ChatAvatar isSpeaking={avatarSpeaking} isListening={recording} isThinking={isThinking && !avatarSpeaking} audioRef={audioRef} />
+        </div>
+
       </div>
     </div>
   );

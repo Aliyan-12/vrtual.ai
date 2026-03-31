@@ -5,29 +5,23 @@ import { useGLTF } from "@react-three/drei";
 import { SkeletonUtils } from "three-stdlib";
 import * as THREE from "three";
 
-// Oculus viseme IDs mapped to morph target names
+const MODEL_PATH = "/3d-avatar/erik_model.glb";
+
+// Oculus viseme IDs → morph target names
 const VISEME_MAP: Record<number, string> = {
-  0: "viseme_sil",
-  1: "viseme_PP",
-  2: "viseme_FF",
-  3: "viseme_TH",
-  4: "viseme_DD",
-  5: "viseme_kk",
-  6: "viseme_CH",
-  7: "viseme_SS",
-  8: "viseme_nn",
-  9: "viseme_RR",
-  10: "viseme_aa",
-  11: "viseme_E",
-  12: "viseme_I",
-  13: "viseme_O",
-  14: "viseme_U",
+  0: "viseme_sil", 1: "viseme_PP", 2: "viseme_FF", 3: "viseme_TH",
+  4: "viseme_DD", 5: "viseme_kk", 6: "viseme_CH", 7: "viseme_SS",
+  8: "viseme_nn", 9: "viseme_RR", 10: "viseme_aa", 11: "viseme_E",
+  12: "viseme_I", 13: "viseme_O", 14: "viseme_U",
 };
 
-const LERP_SPEED = 0.4;
-const BLINK_INTERVAL_MIN = 2000;
-const BLINK_INTERVAL_MAX = 6000;
-const BLINK_DURATION = 150;
+// Meshes that have viseme morph targets
+const VISEME_MESHES = ["Head_Mesh", "Teeth_Mesh", "Tongue_Mesh"];
+// Meshes that have eye/brow morph targets
+const FACE_MESHES = ["Head_Mesh", "Eye_Mesh", "EyeAO_Mesh", "Eyelash_Mesh"];
+
+const LERP = 0.4;
+const BONE_LERP = 0.06;
 
 interface AvatarProps {
   isSpeaking: boolean;
@@ -36,17 +30,18 @@ interface AvatarProps {
   audioRef: React.RefObject<HTMLAudioElement | null>;
 }
 
-function AvatarModel({ isSpeaking, audioRef }: { isSpeaking: boolean; audioRef: React.RefObject<HTMLAudioElement | null> }) {
+function AvatarModel({ isSpeaking, isThinking, audioRef }: {
+  isSpeaking: boolean; isThinking: boolean; audioRef: React.RefObject<HTMLAudioElement | null>;
+}) {
   const group = useRef<THREE.Group>(null);
-  const { scene } = useGLTF("/3d-avatar/Aurora.glb");
+  const { scene } = useGLTF(MODEL_PATH);
   const clone = useMemo(() => SkeletonUtils.clone(scene), [scene]);
   const { nodes } = useGraph(clone);
 
-  // Refs for morph target meshes
-  const headMesh = useRef<THREE.SkinnedMesh | null>(null);
-  const teethMesh = useRef<THREE.SkinnedMesh | null>(null);
-  const eyeLeftMesh = useRef<THREE.SkinnedMesh | null>(null);
-  const eyeRightMesh = useRef<THREE.SkinnedMesh | null>(null);
+  // All meshes with morph targets, keyed by name
+  const morphMeshes = useRef<Record<string, THREE.SkinnedMesh>>({});
+  // Bones keyed by name
+  const bones = useRef<Record<string, THREE.Bone>>({});
 
   // Audio analysis
   const analyserRef = useRef<AnalyserNode | null>(null);
@@ -54,32 +49,48 @@ function AvatarModel({ isSpeaking, audioRef }: { isSpeaking: boolean; audioRef: 
   const audioCtxRef = useRef<AudioContext | null>(null);
   const connectedAudioRef = useRef<HTMLAudioElement | null>(null);
 
+  // Store default bone rotations from the model
+  const defaultRot = useRef<Record<string, THREE.Euler>>({});
+
   // Animation state
-  const timeRef = useRef(0);
-  const currentVisemeRef = useRef<number[]>(new Array(15).fill(0));
-  const targetVisemeRef = useRef<number[]>(new Array(15).fill(0));
-  const nextBlinkRef = useRef(Date.now() + 3000);
-  const blinkProgressRef = useRef(0);
+  const tRef = useRef(0);
+  const curViseme = useRef(new Array(15).fill(0));
+  const tgtViseme = useRef(new Array(15).fill(0));
+  const nextBlink = useRef(Date.now() + 2500);
+  const blinkProg = useRef(0);
+  const eyeTargetX = useRef(0);
+  const eyeTargetY = useRef(0);
+  const nextGaze = useRef(Date.now() + 1000);
 
-  // Grab mesh references
+  // Grab all mesh + bone references
   useEffect(() => {
-    const head = nodes["Wolf3D_Head"] as THREE.SkinnedMesh;
-    const teeth = nodes["Wolf3D_Teeth"] as THREE.SkinnedMesh;
-    const eyeL = nodes["EyeLeft"] as THREE.SkinnedMesh;
-    const eyeR = nodes["EyeRight"] as THREE.SkinnedMesh;
+    const meshNames = ["Head_Mesh", "Teeth_Mesh", "Tongue_Mesh", "Eye_Mesh", "EyeAO_Mesh", "Eyelash_Mesh"];
+    for (const name of meshNames) {
+      const mesh = nodes[name] as THREE.SkinnedMesh;
+      if (mesh?.morphTargetDictionary && mesh?.morphTargetInfluences) {
+        morphMeshes.current[name] = mesh;
+      }
+    }
 
-    if (head?.morphTargetDictionary && head?.morphTargetInfluences) headMesh.current = head;
-    if (teeth?.morphTargetDictionary && teeth?.morphTargetInfluences) teethMesh.current = teeth;
-    if (eyeL?.morphTargetDictionary && eyeL?.morphTargetInfluences) eyeLeftMesh.current = eyeL;
-    if (eyeR?.morphTargetDictionary && eyeR?.morphTargetInfluences) eyeRightMesh.current = eyeR;
-  }, [nodes]);
+    const boneNames = [
+      "Spine", "Spine1", "Spine2", "Neck", "Head",
+      "LeftShoulder", "LeftArm", "LeftForeArm", "LeftHand",
+      "RightShoulder", "RightArm", "RightForeArm", "RightHand",
+      "LeftEye", "RightEye",
+    ];
+    clone.traverse((child: any) => {
+      if (child.isBone && boneNames.includes(child.name)) {
+        bones.current[child.name] = child;
+        defaultRot.current[child.name] = child.rotation.clone();
+      }
+    });
+  }, [nodes, clone]);
 
   // Connect audio analyser
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio || audio === connectedAudioRef.current) return;
-
-    const connectAnalyser = () => {
+    const connect = () => {
       try {
         if (!audioCtxRef.current) audioCtxRef.current = new AudioContext();
         const ctx = audioCtxRef.current;
@@ -88,157 +99,234 @@ function AvatarModel({ isSpeaking, audioRef }: { isSpeaking: boolean; audioRef: 
         analyser.smoothingTimeConstant = 0.6;
         analyserRef.current = analyser;
         dataRef.current = new Uint8Array(analyser.frequencyBinCount);
-
-        const source = ctx.createMediaElementSource(audio);
-        source.connect(analyser);
+        const src = ctx.createMediaElementSource(audio);
+        src.connect(analyser);
         analyser.connect(ctx.destination);
         connectedAudioRef.current = audio;
-      } catch { /* already connected */ }
+      } catch {}
     };
-
-    audio.addEventListener("play", connectAnalyser, { once: true });
-    return () => audio.removeEventListener("play", connectAnalyser);
+    audio.addEventListener("play", connect, { once: true });
+    return () => audio.removeEventListener("play", connect);
   }, [audioRef.current]);
 
-  // Set morph target on a mesh
-  function setMorphTarget(mesh: THREE.SkinnedMesh | null, name: string, value: number) {
-    if (!mesh?.morphTargetDictionary || !mesh?.morphTargetInfluences) return;
-    const idx = mesh.morphTargetDictionary[name];
-    if (idx !== undefined) {
-      mesh.morphTargetInfluences[idx] = value;
+  // ── Helpers ──
+
+  function setMorph(meshNames: string[], name: string, value: number) {
+    for (const mn of meshNames) {
+      const mesh = morphMeshes.current[mn];
+      if (!mesh?.morphTargetDictionary || !mesh?.morphTargetInfluences) continue;
+      const idx = mesh.morphTargetDictionary[name];
+      if (idx !== undefined) mesh.morphTargetInfluences[idx] = value;
     }
   }
 
-  // Get audio energy from frequency bands
-  function getFrequencyEnergy(): number[] {
+  function setBone(name: string, x: number, y: number, z: number) {
+    const bone = bones.current[name];
+    if (bone) bone.rotation.set(x, y, z);
+  }
+
+  function lerpBone(name: string, tx: number, ty: number, tz: number, speed = BONE_LERP) {
+    const bone = bones.current[name];
+    if (!bone) return;
+    bone.rotation.x = THREE.MathUtils.lerp(bone.rotation.x, tx, speed);
+    bone.rotation.y = THREE.MathUtils.lerp(bone.rotation.y, ty, speed);
+    bone.rotation.z = THREE.MathUtils.lerp(bone.rotation.z, tz, speed);
+  }
+
+  function getEnergy(): number[] {
     if (!analyserRef.current || !dataRef.current) return new Array(15).fill(0);
     analyserRef.current.getByteFrequencyData(dataRef.current as Uint8Array<ArrayBuffer>);
-
-    const data = dataRef.current;
-    const bandSize = Math.floor(data.length / 15);
-    const energies: number[] = [];
-
+    const d = dataRef.current;
+    const bs = Math.floor(d.length / 15);
+    const e: number[] = [];
     for (let i = 0; i < 15; i++) {
-      let sum = 0;
-      for (let j = i * bandSize; j < (i + 1) * bandSize && j < data.length; j++) {
-        sum += data[j];
-      }
-      energies.push(sum / (bandSize * 255));
+      let s = 0;
+      for (let j = i * bs; j < (i + 1) * bs && j < d.length; j++) s += d[j];
+      e.push(s / (bs * 255));
     }
-    return energies;
+    return e;
   }
+
+  // ── Main animation loop ──
 
   useFrame((_, delta) => {
     if (!group.current) return;
-    timeRef.current += delta;
-    const t = timeRef.current;
-
-    // ── Viseme lip sync ──
-    if (isSpeaking && connectedAudioRef.current) {
-      const energies = getFrequencyEnergy();
-
-      // Map frequency bands to viseme targets with weighting
-      const newTargets = new Array(15).fill(0);
-
-      // Low frequencies → PP, FF (lip-related)
-      newTargets[1] = Math.min(energies[0] * 2, 1); // PP
-      newTargets[2] = Math.min(energies[1] * 1.8, 1); // FF
-
-      // Low-mid → TH, DD
-      newTargets[3] = Math.min(energies[2] * 1.5, 1); // TH
-      newTargets[4] = Math.min(energies[3] * 1.5, 1); // DD
-
-      // Mid → kk, CH, SS
-      newTargets[5] = Math.min(energies[4] * 1.3, 1); // kk
-      newTargets[6] = Math.min(energies[5] * 1.3, 1); // CH
-      newTargets[7] = Math.min(energies[6] * 1.5, 1); // SS
-
-      // Mid-high → nn, RR
-      newTargets[8] = Math.min(energies[7] * 1.2, 1); // nn
-      newTargets[9] = Math.min(energies[8] * 1.2, 1); // RR
-
-      // Vowels from overall energy
-      const overallEnergy = energies.reduce((a, b) => a + b, 0) / energies.length;
-      newTargets[10] = Math.min(overallEnergy * 2.5, 1); // aa
-      newTargets[11] = Math.min(energies[9] * 2, 1); // E
-      newTargets[12] = Math.min(energies[10] * 1.8, 1); // I
-      newTargets[13] = Math.min(energies[11] * 2, 1); // O
-      newTargets[14] = Math.min(energies[12] * 1.5, 1); // U
-
-      // Find dominant viseme and boost it
-      let maxIdx = 0;
-      let maxVal = 0;
-      for (let i = 1; i < 15; i++) {
-        if (newTargets[i] > maxVal) { maxVal = newTargets[i]; maxIdx = i; }
-      }
-      // Suppress non-dominant visemes for cleaner look
-      for (let i = 1; i < 15; i++) {
-        if (i !== maxIdx) newTargets[i] *= 0.3;
-      }
-      newTargets[maxIdx] = Math.min(newTargets[maxIdx] * 1.2, 1);
-
-      targetVisemeRef.current = newTargets;
-    } else if (isSpeaking) {
-      // Fallback: cycle through visemes when audio not connected
-      const cycle = [10, 11, 13, 12, 10, 14, 1, 11]; // aa, E, O, I, aa, U, PP, E
-      const idx = cycle[Math.floor(t * 6) % cycle.length];
-      const newTargets = new Array(15).fill(0);
-      newTargets[idx] = 0.7;
-      targetVisemeRef.current = newTargets;
-    } else {
-      // Return to silence
-      targetVisemeRef.current = new Array(15).fill(0);
-    }
-
-    // Lerp current visemes toward targets
-    for (let i = 0; i < 15; i++) {
-      currentVisemeRef.current[i] = THREE.MathUtils.lerp(
-        currentVisemeRef.current[i],
-        targetVisemeRef.current[i],
-        isSpeaking ? LERP_SPEED : 0.15
-      );
-    }
-
-    // Apply visemes to head and teeth meshes
-    for (let i = 0; i < 15; i++) {
-      const name = VISEME_MAP[i];
-      const value = currentVisemeRef.current[i];
-      setMorphTarget(headMesh.current, name, value);
-      setMorphTarget(teethMesh.current, name, value);
-    }
-
-    // JawOpen driven by overall mouth openness
-    const jawValue = Math.max(
-      currentVisemeRef.current[10], // aa
-      currentVisemeRef.current[13], // O
-      currentVisemeRef.current[14], // U
-    ) * 0.6;
-    setMorphTarget(headMesh.current, "jawOpen", jawValue);
-    setMorphTarget(teethMesh.current, "jawOpen", jawValue);
-
-    // ── Eye blinking ──
+    tRef.current += delta;
+    const t = tRef.current;
     const now = Date.now();
-    if (now > nextBlinkRef.current) {
-      blinkProgressRef.current = 1;
-      nextBlinkRef.current = now + BLINK_INTERVAL_MIN + Math.random() * (BLINK_INTERVAL_MAX - BLINK_INTERVAL_MIN);
-    }
-    if (blinkProgressRef.current > 0) {
-      blinkProgressRef.current = Math.max(0, blinkProgressRef.current - delta * (1000 / BLINK_DURATION));
-    }
-    const blinkValue = blinkProgressRef.current > 0.5 ? (1 - blinkProgressRef.current) * 2 : blinkProgressRef.current * 2;
-    setMorphTarget(headMesh.current, "eyeBlinkLeft", blinkValue);
-    setMorphTarget(headMesh.current, "eyeBlinkRight", blinkValue);
-    setMorphTarget(eyeLeftMesh.current, "eyeBlinkLeft", blinkValue);
-    setMorphTarget(eyeRightMesh.current, "eyeBlinkRight", blinkValue);
 
-    // ── Subtle head movement ──
-    const breathe = Math.sin(t * 1.2) * 0.003;
-    const headNod = isSpeaking ? Math.sin(t * 2) * 0.02 : 0;
-    const headSway = Math.sin(t * 0.8) * 0.01;
+    // ═══════════════════════════════════
+    // LIP SYNC (viseme morph targets)
+    // ═══════════════════════════════════
+    if (isSpeaking && connectedAudioRef.current) {
+      const en = getEnergy();
+      const nt = new Array(15).fill(0);
+      // Keep values subtle — max 0.6 for natural mouth movement
+      nt[1] = Math.min(en[0] * 0.8, 0.5);   // PP
+      nt[2] = Math.min(en[1] * 0.7, 0.5);   // FF
+      nt[3] = Math.min(en[2] * 0.6, 0.4);   // TH
+      nt[4] = Math.min(en[3] * 0.6, 0.4);   // DD
+      nt[5] = Math.min(en[4] * 0.5, 0.4);   // kk
+      nt[6] = Math.min(en[5] * 0.5, 0.4);   // CH
+      nt[7] = Math.min(en[6] * 0.6, 0.4);   // SS
+      nt[8] = Math.min(en[7] * 0.5, 0.4);   // nn
+      nt[9] = Math.min(en[8] * 0.5, 0.4);   // RR
+      const ov = en.reduce((a, b) => a + b, 0) / en.length;
+      nt[10] = Math.min(ov * 1.0, 0.6);     // aa
+      nt[11] = Math.min(en[9] * 0.8, 0.5);  // E
+      nt[12] = Math.min(en[10] * 0.7, 0.5); // I
+      nt[13] = Math.min(en[11] * 0.8, 0.5); // O
+      nt[14] = Math.min(en[12] * 0.6, 0.5); // U
 
-    group.current.rotation.x = THREE.MathUtils.lerp(group.current.rotation.x, headNod, 0.1);
-    group.current.rotation.y = THREE.MathUtils.lerp(group.current.rotation.y, headSway, 0.08);
-    group.current.position.y = THREE.MathUtils.lerp(group.current.position.y, breathe * 0.5, 0.1);
+      // Dominant viseme suppression
+      let mi = 0, mv = 0;
+      for (let i = 1; i < 15; i++) { if (nt[i] > mv) { mv = nt[i]; mi = i; } }
+      for (let i = 1; i < 15; i++) { if (i !== mi) nt[i] *= 0.3; }
+      nt[mi] = Math.min(nt[mi], 0.6);
+      tgtViseme.current = nt;
+    } else if (isSpeaking) {
+      // Voice mode fallback
+      const c = [10, 11, 13, 12, 10, 14, 1, 11];
+      const nt = new Array(15).fill(0);
+      nt[c[Math.floor(t * 6) % c.length]] = 0.4;
+      tgtViseme.current = nt;
+    } else {
+      tgtViseme.current = new Array(15).fill(0);
+    }
+
+    // Lerp + apply visemes to Head, Teeth, Tongue
+    for (let i = 0; i < 15; i++) {
+      curViseme.current[i] = THREE.MathUtils.lerp(curViseme.current[i], tgtViseme.current[i], isSpeaking ? LERP : 0.15);
+      const name = VISEME_MAP[i];
+      setMorph(VISEME_MESHES, name, curViseme.current[i]);
+    }
+
+    // jawOpen + mouthOpen driven by vowels — keep subtle
+    const jaw = Math.max(curViseme.current[10], curViseme.current[13], curViseme.current[14]) * 0.35;
+    setMorph(VISEME_MESHES, "jawOpen", jaw);
+    setMorph(VISEME_MESHES, "mouthOpen", jaw * 0.4);
+
+    // Subtle mouth smile while speaking
+    if (isSpeaking) {
+      const smile = 0.1 + Math.sin(t * 1.5) * 0.05;
+      setMorph(["Head_Mesh"], "mouthSmileLeft", smile);
+      setMorph(["Head_Mesh"], "mouthSmileRight", smile);
+    } else {
+      setMorph(["Head_Mesh"], "mouthSmileLeft", THREE.MathUtils.lerp(0.1, 0, 0.05));
+      setMorph(["Head_Mesh"], "mouthSmileRight", THREE.MathUtils.lerp(0.1, 0, 0.05));
+    }
+
+    // ═══════════════════════════════════
+    // EYE BLINKING (all face meshes)
+    // ═══════════════════════════════════
+    if (now > nextBlink.current) {
+      blinkProg.current = 1;
+      nextBlink.current = now + 2000 + Math.random() * 4000;
+    }
+    if (blinkProg.current > 0) blinkProg.current = Math.max(0, blinkProg.current - delta * 7);
+    const bv = blinkProg.current > 0.5 ? (1 - blinkProg.current) * 2 : blinkProg.current * 2;
+    setMorph(FACE_MESHES, "eyeBlinkLeft", bv);
+    setMorph(FACE_MESHES, "eyeBlinkRight", bv);
+
+    // ═══════════════════════════════════
+    // EYE GAZE (random micro-saccades)
+    // ═══════════════════════════════════
+    if (now > nextGaze.current) {
+      eyeTargetX.current = (Math.random() - 0.5) * 0.15;
+      eyeTargetY.current = (Math.random() - 0.5) * 0.1;
+      nextGaze.current = now + 800 + Math.random() * 2000;
+    }
+    // Apply via eye bones
+    const eyeL = bones.current["LeftEye"];
+    const eyeR = bones.current["RightEye"];
+    if (eyeL) {
+      eyeL.rotation.y = THREE.MathUtils.lerp(eyeL.rotation.y, eyeTargetX.current, 0.08);
+      eyeL.rotation.x = THREE.MathUtils.lerp(eyeL.rotation.x, eyeTargetY.current, 0.08);
+    }
+    if (eyeR) {
+      eyeR.rotation.y = THREE.MathUtils.lerp(eyeR.rotation.y, eyeTargetX.current, 0.08);
+      eyeR.rotation.x = THREE.MathUtils.lerp(eyeR.rotation.x, eyeTargetY.current, 0.08);
+    }
+
+    // ═══════════════════════════════════
+    // EYEBROW EXPRESSIONS
+    // ═══════════════════════════════════
+    if (isSpeaking) {
+      // Slight brow raise while speaking for expressiveness
+      const browUp = 0.15 + Math.sin(t * 2) * 0.08;
+      setMorph(FACE_MESHES, "browInnerUp", browUp);
+      setMorph(FACE_MESHES, "browOuterUpLeft", browUp * 0.5);
+      setMorph(FACE_MESHES, "browOuterUpRight", browUp * 0.5);
+    } else if (isThinking) {
+      // Furrowed brows while thinking
+      setMorph(FACE_MESHES, "browDownLeft", 0.3);
+      setMorph(FACE_MESHES, "browDownRight", 0.3);
+      setMorph(FACE_MESHES, "browInnerUp", 0.2);
+    } else {
+      // Relax
+      setMorph(FACE_MESHES, "browInnerUp", THREE.MathUtils.lerp(0, 0, 0.05));
+      setMorph(FACE_MESHES, "browDownLeft", THREE.MathUtils.lerp(0, 0, 0.05));
+      setMorph(FACE_MESHES, "browDownRight", THREE.MathUtils.lerp(0, 0, 0.05));
+      setMorph(FACE_MESHES, "browOuterUpLeft", 0);
+      setMorph(FACE_MESHES, "browOuterUpRight", 0);
+    }
+
+    // ═══════════════════════════════════
+    // HEAD + NECK MOVEMENT (bone-based)
+    // ═══════════════════════════════════
+    const breathe = Math.sin(t * 1.2) * 0.002;
+    group.current.position.y = THREE.MathUtils.lerp(group.current.position.y, breathe, 0.1);
+
+    if (isSpeaking) {
+      lerpBone("Head", Math.sin(t * 2.2) * 0.04, Math.sin(t * 1.5) * 0.03, Math.sin(t * 1.8) * 0.015, 0.08);
+      lerpBone("Neck", Math.sin(t * 1.8) * 0.02, Math.sin(t * 1.2) * 0.02, 0, 0.06);
+    } else if (isThinking) {
+      lerpBone("Head", 0.08 + Math.sin(t * 0.4) * 0.02, Math.sin(t * 0.5) * 0.04, Math.sin(t * 0.3) * 0.02, 0.04);
+      lerpBone("Neck", 0.04, 0, 0, 0.04);
+    } else {
+      lerpBone("Head", Math.sin(t * 0.6) * 0.01, Math.sin(t * 0.4) * 0.01, 0, 0.04);
+      lerpBone("Neck", 0, 0, 0, 0.04);
+    }
+
+    // ═══════════════════════════════════
+    // ARM / HAND GESTURES (bone-based)
+    // ═══════════════════════════════════
+    // Helper to get default rotation for a bone
+    const def = (name: string) => defaultRot.current[name] || new THREE.Euler(0, 0, 0);
+
+    if (isThinking) {
+      // Subtle right hand lift — small offset from default, not a full chin pose
+      const rd = def("RightArm");
+      lerpBone("RightArm", rd.x - 0.3, rd.y + 0.15, rd.z, 0.03);
+      const rfd = def("RightForeArm");
+      lerpBone("RightForeArm", rfd.x, rfd.y - 0.5, rfd.z, 0.03);
+      // Left stays at default
+      const ld = def("LeftArm");
+      lerpBone("LeftArm", ld.x, ld.y, ld.z, 0.03);
+      const lfd = def("LeftForeArm");
+      lerpBone("LeftForeArm", lfd.x, lfd.y, lfd.z, 0.03);
+    } else if (isSpeaking) {
+      // Subtle gestures: small oscillations from default pose
+      const rd = def("RightArm");
+      lerpBone("RightArm", rd.x + Math.sin(t * 1.8) * 0.05, rd.y, rd.z + Math.sin(t * 1.5) * 0.06, 0.04);
+      const rfd = def("RightForeArm");
+      lerpBone("RightForeArm", rfd.x, rfd.y + Math.sin(t * 2.2) * 0.08, rfd.z + Math.sin(t * 2.0) * 0.06, 0.04);
+
+      const ld = def("LeftArm");
+      lerpBone("LeftArm", ld.x + Math.sin(t * 1.6) * 0.04, ld.y, ld.z - Math.sin(t * 1.3) * 0.05, 0.04);
+      const lfd = def("LeftForeArm");
+      lerpBone("LeftForeArm", lfd.x, lfd.y + Math.sin(t * 2.0) * 0.06, lfd.z - Math.sin(t * 1.7) * 0.05, 0.04);
+
+      lerpBone("Spine", def("Spine").x, def("Spine").y + Math.sin(t * 0.7) * 0.008, def("Spine").z, 0.03);
+    } else {
+      // Idle: return to exact default pose
+      for (const name of ["LeftShoulder", "LeftArm", "LeftForeArm", "LeftHand",
+                           "RightShoulder", "RightArm", "RightForeArm", "RightHand",
+                           "Spine", "Spine1"]) {
+        const d = def(name);
+        lerpBone(name, d.x, d.y, d.z, 0.03);
+      }
+    }
   });
 
   return (
@@ -248,8 +336,7 @@ function AvatarModel({ isSpeaking, audioRef }: { isSpeaking: boolean; audioRef: 
   );
 }
 
-// Preload the model
-useGLTF.preload("/3d-avatar/Aurora.glb");
+useGLTF.preload(MODEL_PATH);
 
 export default function ChatAvatar({ isSpeaking, isListening, isThinking, audioRef }: AvatarProps) {
   return (
@@ -269,11 +356,10 @@ export default function ChatAvatar({ isSpeaking, isListening, isThinking, audioR
           <directionalLight position={[1, 2, 2]} intensity={1.2} />
           <directionalLight position={[-1, 1, 1]} intensity={0.4} />
           <Suspense fallback={null}>
-            <AvatarModel isSpeaking={isSpeaking} audioRef={audioRef} />
+            <AvatarModel isSpeaking={isSpeaking} isThinking={isThinking} audioRef={audioRef} />
           </Suspense>
         </Canvas>
 
-        {/* Listening indicator */}
         {isListening && !isSpeaking && (
           <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1.5">
             {[0, 1, 2].map(i => (

@@ -65,11 +65,35 @@ export default function Chat() {
   } = useMicrophone();
 
   // Voice mode: detect when model is speaking
+  const voiceSpeakTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastTranscriptLen = useRef(0);
+
   useEffect(() => {
-    if (recording && transcripts.length > 0) {
-      const last = transcripts[transcripts.length - 1];
-      setAvatarSpeaking(last.role === "assistant");
+    if (!recording) {
+      setAvatarSpeaking(false);
+      return;
     }
+
+    if (transcripts.length > 0) {
+      const last = transcripts[transcripts.length - 1];
+      if (last.role === "assistant") {
+        setAvatarSpeaking(true);
+
+        // Clear previous timer
+        if (voiceSpeakTimer.current) clearTimeout(voiceSpeakTimer.current);
+
+        // If transcript stops growing for 1.5s, assume speaking is done
+        voiceSpeakTimer.current = setTimeout(() => {
+          setAvatarSpeaking(false);
+        }, 1500);
+      } else {
+        setAvatarSpeaking(false);
+      }
+    }
+
+    return () => {
+      if (voiceSpeakTimer.current) clearTimeout(voiceSpeakTimer.current);
+    };
   }, [transcripts, recording]);
 
   const [text, setText] = useState("");

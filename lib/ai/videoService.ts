@@ -1,8 +1,8 @@
 import { generateText, Output } from "ai";
 import { google } from "@ai-sdk/google";
 import { z } from "zod";
-import { searchYouTube, fetchVideoDetails } from "../tools/youtube";
-import { extractTimestamps } from "../tools/timestamp";
+import { searchYouTube, fetchVideoDetails } from "@/lib/tools/youtube";
+import { extractTimestamps, extractCategory } from "@/lib/tools/extractor";
 import type { EnrichedVideo } from "@/types";
 
 const MAX_RETRIES = 3;
@@ -38,23 +38,20 @@ Video ${i + 1}:
 - Description: ${v.description.slice(0, 500)}
 `).join("\n")}
 
-Select the 1-2 videos that are MOST relevant to the user's emotional state and request.
-Consider:
-- Does the video topic match what the user is feeling or asking about?
-- Is it a song/music video if the user asked for a song?
-- Is it educational/therapeutic content if the user needs guidance?
-- Does the description indicate it addresses the user's specific concern?
+SELECTION RULES:
+1. If the user asked for a specific type (song, podcast, guidance), ONLY select videos whose Category matches. Do NOT select a "Podcast" or "Education" video when the user asked for a "Song".
+2. If no video matches the requested type, return an EMPTY array — do not force an irrelevant match.
+3. If the user didn't specify a type, select the 1-2 videos most relevant to their emotional state.
+4. Maximum 2 videos. If only 1 is relevant, select only 1.
 
-ONLY select videos that are genuinely relevant. If only 1 is relevant, select only 1. Return their IDs.`;
+Return the selected video IDs.`;
 }
 
 function buildTimestampPrompt(userContext: string, video: { title: string; category: string; tags: string[]; description: string }, sections: { time: string; seconds: number; label?: string }[]): string {
   return `User emotion/context:
 "${userContext}"
 
-Video title:
-"${video.title}"
-
+Video title: "${video.title}"
 Video category: ${video.category}
 Video tags: ${video.tags.slice(0, 10).join(", ")}
 
@@ -80,7 +77,6 @@ export class VideoService {
     let videos = await searchYouTube(query, 4);
     console.log(`${logPrefix} Initial search returned ${videos.length} videos`);
 
-    // AI-powered retries if no results
     if (videos.length === 0) {
       for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
         const retryQuery = await VideoService.generateRetryQuery(query, userContext, attempt);
@@ -98,21 +94,24 @@ export class VideoService {
 
     console.log(`${logPrefix} Videos found:`, videos.map(v => `${v.title} (${v.id})`));
 
-    // Step 2: Fetch full details (description, category, tags) for all videos
+    // Step 2: Fetch full details + extract category from description
     const videosWithDetails = await Promise.all(
       videos.map(async (video) => {
         const details = await fetchVideoDetails(video.id);
-        return { ...video, ...details };
+        // Use extractCategory which checks for ### Category: marker first, then falls back
+        const category = extractCategory(details.description);
+        console.log(`${logPrefix} "${video.title}" → category: ${category}`);
+        return { ...video, ...details, category };
       })
     );
 
-    // Step 3: AI picks the most relevant 1-2 videos
+    // Step 3: AI picks the most relevant 1-2 videos (category-aware)
     const selectionOutput = await generateText({
       model: google("gemini-2.5-flash"),
       experimental_output: Output.object({
         schema: z.object({
-          selectedIds: z.array(z.string()).describe("Array of 1-2 video IDs that are most relevant"),
-          reasoning: z.string().describe("Brief explanation of why these were selected"),
+          selectedIds: z.array(z.string()).describe("Array of 0-2 video IDs that are most relevant. Empty if none match."),
+          reasoning: z.string().describe("Brief explanation of why these were selected or why none matched"),
         }),
       }),
       prompt: buildSelectionPrompt(userContext, videosWithDetails),
@@ -120,6 +119,11 @@ export class VideoService {
 
     const selection = JSON.parse(selectionOutput.text);
     console.log(`${logPrefix} AI selected ${selection.selectedIds.length} videos: ${selection.reasoning}`);
+
+    if (selection.selectedIds.length === 0) {
+      console.log(`${logPrefix} No matching videos for user's request type`);
+      return [];
+    }
 
     const selectedVideos = videosWithDetails.filter(v => selection.selectedIds.includes(v.id));
 

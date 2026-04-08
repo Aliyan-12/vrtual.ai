@@ -5,18 +5,10 @@ export function extractTimestamps(description?: string) {
   const sections: { time: string; seconds: number; label?: string }[] = [];
   const seen = new Set<number>();
 
-  // Match multiple timestamp formats:
-  // "00:00 | Label"          (MM:SS pipe)
-  // "00:00 - Label"          (MM:SS dash)
-  // "00:00 Label"            (MM:SS space)
-  // "0:00:00 | Label"        (H:MM:SS pipe)
-  // "00:00:00 Label"         (HH:MM:SS space)
-  // "(00:02:17 to 00:03:02)" (inline range — takes the start)
   const chapterRegex = /^\s*(\d{1,2}:\d{2}(?::\d{2})?)\s*[-|]?\s*(.+)$/;
   const inlineRegex = /\((\d{1,2}:\d{2}:\d{2})\s+to\s+\d{1,2}:\d{2}:\d{2}\)/g;
 
   for (const line of lines) {
-    // Try chapter format first
     const match = line.match(chapterRegex);
     if (match) {
       const [, time, label] = match;
@@ -28,14 +20,12 @@ export function extractTimestamps(description?: string) {
       continue;
     }
 
-    // Try inline timestamps (from description paragraphs)
     let inlineMatch;
     while ((inlineMatch = inlineRegex.exec(line)) !== null) {
       const time = inlineMatch[1];
       const secs = parseTimeToSeconds(time);
       if (!seen.has(secs)) {
         seen.add(secs);
-        // Extract surrounding text as label (take text before the parenthesis)
         const before = line.substring(0, inlineMatch.index).trim();
         const label = before.split(".").pop()?.trim() || before.slice(-80).trim();
         sections.push({ time, seconds: secs, label: label || undefined });
@@ -43,18 +33,30 @@ export function extractTimestamps(description?: string) {
     }
   }
 
-  // Sort by time
   sections.sort((a, b) => a.seconds - b.seconds);
-
   return sections;
 }
 
 function parseTimeToSeconds(time: string): number {
   const parts = time.split(":").map(Number);
   if (parts.length === 3) {
-    // HH:MM:SS
     return parts[0] * 3600 + parts[1] * 60 + parts[2];
   }
-  // MM:SS
   return parts[0] * 60 + parts[1];
+}
+
+/**
+ * Extract category from video description.
+ * Looks for: "### Category: Song" or "Category: Podcast, Advice" etc.
+ * Returns "Unknown" if no category marker found.
+ */
+export function extractCategory(description?: string): string {
+  if (!description) return "Unknown";
+
+  const match = description.match(/#{0,4}\s*Category:\s*(.+)/i);
+  if (match) {
+    return match[1].trim().split(",")[0].trim();
+  }
+
+  return "Unknown";
 }

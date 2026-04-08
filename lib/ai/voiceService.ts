@@ -1,6 +1,6 @@
 import { GenerateContentResponse, GoogleGenAI } from "@google/genai";
 import mime from 'mime';
-import { saveBinaryFile, convertToWav } from "../utils/helper";
+import { saveBinaryFile, convertToWav } from "@/lib/utils/helper";
 import { now } from "next-auth/client/_utils";
 
 export class VoiceService {

@@ -1,5 +1,6 @@
 import fetch from "node-fetch";
 import type { VideoDetails, YouTubeSearchResponse } from "@/types";
+import { extractCategory } from "@/lib/tools/extractor";
 
 // Classify videos into channel-specific categories based on content signals
 function classifyVideo(title: string, description: string, tags: string[], duration?: string): string {
@@ -89,7 +90,7 @@ export async function fetchVideoDetails(videoId: string): Promise<VideoDetails> 
 
   return {
     description,
-    category: classifyVideo(title, description, tags, duration),
+    category: extractCategory(description),
     tags,
   };
 }

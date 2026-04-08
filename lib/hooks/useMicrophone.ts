@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback } from "react";
 import { GoogleGenAI, Modality, Session, Type } from "@google/genai";
-import { SYSTEM_PROMPT, FETCH_VIDEOS_DESCRIPTION } from "@/lib/ai/systemPrompt";
+import { SYSTEM_PROMPT, FETCH_VIDEOS_DESCRIPTION } from "@/lib/utils/prompt";
 import type { VoiceTranscript, VoiceVideo, ConnectionStatus } from "@/types";
 
 // How long after the last audio chunk to keep the mic muted (ms).

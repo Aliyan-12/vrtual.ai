@@ -58,7 +58,7 @@ export interface EnrichedVideo {
   description: string;
   thumbnail: string;
   url: string;
-  category: string;
+  category?: string | null;
   tags: string[];
   fullDescription: string;
   selectedSection?: { startSeconds: number; reason: string };
